@@ -5,12 +5,16 @@ interface LoadingSpinnerProps {
 
 export default function LoadingSpinner({ message, fullScreen = false }: LoadingSpinnerProps) {
   const content = (
-    <div className="flex flex-col items-center gap-3">
-      <div
-        className="w-10 h-10 rounded-full border-2 border-[var(--border)] border-t-[var(--accent-primary)] animate-spin"
-      />
+    <div className="flex flex-col items-center gap-4">
+      <div className="flex items-end gap-1.5 font-pixel text-xl text-[var(--text-primary)] leading-none">
+        <span className="animate-pulse" style={{ animationDelay: '0ms' }}>·</span>
+        <span className="animate-pulse" style={{ animationDelay: '250ms' }}>·</span>
+        <span className="animate-pulse" style={{ animationDelay: '500ms' }}>·</span>
+      </div>
       {message && (
-        <p className="text-[var(--text-secondary)] text-sm">{message}</p>
+        <p className="font-pixel text-[10px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+          {message}
+        </p>
       )}
     </div>
   )

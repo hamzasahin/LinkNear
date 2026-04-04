@@ -3,14 +3,16 @@ interface MatchBadgeProps {
 }
 
 export default function MatchBadge({ score }: MatchBadgeProps) {
-  const color =
-    score >= 80 ? 'bg-[rgba(16,185,129,0.2)] text-[var(--success)] border-[rgba(16,185,129,0.4)]' :
-    score >= 50 ? 'bg-[rgba(255,179,71,0.2)] text-[var(--accent-tertiary)] border-[rgba(255,179,71,0.4)]' :
-    'bg-[rgba(100,116,139,0.2)] text-[var(--text-tertiary)] border-[rgba(100,116,139,0.4)]'
-
+  // Score rendered as Geist Mono numerals. A thin coral underline marks a
+  // strong match (≥80); nothing else.
+  const strong = score >= 80
   return (
-    <div className={`inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-xs font-bold border ${color}`}>
+    <span
+      className={`font-pixel text-sm text-[var(--text-primary)] tabular-nums ${
+        strong ? 'underline underline-offset-[3px] decoration-[var(--accent-primary)] decoration-1' : ''
+      }`}
+    >
       {score}%
-    </div>
+    </span>
   )
 }

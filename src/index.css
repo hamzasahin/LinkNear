@@ -1,19 +1,53 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600&family=Junicode:ital@0;1&family=Geist+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 :root {
-  --bg-primary: #0F1419;
-  --bg-surface: #1A1F26;
-  --bg-surface-hover: #242B35;
-  --accent-primary: #00BFA6;
-  --accent-secondary: #FF6B6B;
-  --accent-tertiary: #FFB347;
-  --text-primary: #F1F5F9;
-  --text-secondary: #94A3B8;
-  --text-tertiary: #64748B;
-  --border: #2D3748;
-  --success: #10B981;
-  --danger: #EF4444;
+  /* Paper — warm off-whites */
+  --bg-primary:        #f8f6f3;
+  --bg-surface:        #f2ede8;
+  --bg-surface-hover:  #eae3dd;
+
+  /* Ink — warm browns, never pure black */
+  --text-primary:      #3d3733;
+  --text-secondary:    #494440;
+  --text-tertiary:     #706a64;
+  --text-faint:        #c2beba;
+
+  /* Single accent — coral, used like a pen */
+  --accent-primary:    #e66253;
+
+  /* Supporting — re-keyed from old teal/red/orange system to warm neutrals */
+  --accent-secondary:  #494440;
+  --accent-tertiary:   #c2beba;
+
+  /* Rules */
+  --border:            #eae3dd;
+  --border-strong:     #c2beba;
+
+  /* Semantic — muted, not neon */
+  --success:           #4a7c59;
+  --danger:            #b24535;
+
+  /* Night / instrument palette — reserved for special moments */
+  --night-bg:          #0d0d1a;
+  --night-surface:     #1a1a2e;
+  --instrument-blue:   #4a9fff;
+  --instrument-ink:    #cee0f9;
+
+  /* Typography */
+  --font-sans:    'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --font-serif:   'Junicode', ui-serif, Georgia, 'Times New Roman', serif;
+  --font-pixel:   'Geist Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  /* Radii — small, tight */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* Motion — one ease, one duration */
+  --ease:      cubic-bezier(0.4, 0, 0.2, 1);
+  --duration:  250ms;
 }
 
 * {
@@ -22,8 +56,9 @@
 
 body {
   background-color: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: 'DM Sans', sans-serif;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-weight: 400;
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
@@ -35,63 +70,36 @@ body {
 }
 
 .font-display {
-  font-family: 'Instrument Serif', serif;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.025em;
 }
 
-.font-mono {
-  font-family: 'JetBrains Mono', monospace;
+.font-mono,
+.font-pixel {
+  font-family: var(--font-pixel);
+  font-feature-settings: 'tnum';
 }
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* Quiet motion set — one sweep, one pulse, one fade */
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
 }
 
-@keyframes gradientShift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
-@keyframes pulse-ring {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 191, 166, 0.4); }
-  70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(0, 191, 166, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 191, 166, 0); }
-}
-
-.animate-fade-in-up {
-  animation: fadeInUp 0.6s ease forwards;
-}
-
-.animate-float {
-  animation: float 3s ease-in-out infinite;
-}
-
-.animate-gradient {
-  background-size: 200% 200%;
-  animation: gradientShift 4s ease infinite;
-}
-
-.animate-pulse-ring {
-  animation: pulse-ring 2s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
-}
-
-.delay-100 { animation-delay: 0.1s; }
-.delay-200 { animation-delay: 0.2s; }
-.delay-300 { animation-delay: 0.3s; }
-.delay-400 { animation-delay: 0.4s; }
-.delay-500 { animation-delay: 0.5s; }
+.animate-radar   { animation: radar-sweep 6s linear infinite; transform-origin: center; }
+.animate-pulse   { animation: pulse-dot 2s var(--ease) infinite; }
+.animate-fade-in { animation: fade-in 250ms var(--ease) forwards; }
 
 .skeleton {
   background: linear-gradient(90deg, var(--bg-surface) 25%, var(--bg-surface-hover) 50%, var(--bg-surface) 75%);
@@ -100,6 +108,6 @@ body {
 }
 
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
+  0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }

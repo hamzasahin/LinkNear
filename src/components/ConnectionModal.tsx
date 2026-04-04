@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
 interface ConnectionModalProps {
   isOpen: boolean
@@ -11,55 +11,67 @@ export default function ConnectionModal({ isOpen, onClose, onSend, recipientName
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
 
-  useEffect(() => {
-    if (!isOpen) setMessage('')
-  }, [isOpen])
-
   if (!isOpen) return null
 
-  const handleSend = async () => {
-    setSending(true)
-    await onSend(message)
+  const handleClose = () => {
+    setMessage('')
     setSending(false)
     onClose()
   }
 
+  const handleSend = async () => {
+    setSending(true)
+
+    try {
+      await onSend(message)
+      setMessage('')
+      onClose()
+    } finally {
+      setSending(false)
+    }
+  }
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--night-bg)]/50 animate-fade-in"
+      onClick={(e) => { if (e.target === e.currentTarget) handleClose() }}
     >
-      <div className="w-full max-w-md bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] shadow-2xl p-6 animate-fade-in-up">
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-1">
-          Connect with {recipientName}
+      <div className="w-full max-w-md bg-[var(--bg-primary)] rounded-[var(--radius-xl)] border border-[var(--border-strong)] p-8 animate-fade-in">
+        <p className="font-pixel text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)] mb-2">
+          Connect
+        </p>
+        <h3 className="font-display text-2xl text-[var(--text-primary)] mb-2 leading-tight">
+          Introduce yourself to {recipientName}.
         </h3>
-        <p className="text-sm text-[var(--text-secondary)] mb-4">
-          Add a short intro message to increase your chances of connecting.
+        <p className="text-sm text-[var(--text-tertiary)] mb-5">
+          A short note goes further than a blank request.
         </p>
 
         <textarea
           value={message}
           onChange={e => setMessage(e.target.value)}
-          placeholder="Hi! I noticed we share interests in..."
+          placeholder="Hi! I noticed we share interests in…"
           rows={4}
           maxLength={300}
-          className="w-full bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg p-3 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] resize-none focus:outline-none focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-all"
+          className="w-full bg-[var(--bg-primary)] border border-[var(--border-strong)] rounded-[var(--radius-md)] p-3 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] resize-none focus:outline-none focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-colors"
         />
-        <p className="text-xs text-[var(--text-tertiary)] text-right mt-1">{message.length}/300</p>
+        <p className="font-pixel text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)] text-right mt-1.5">
+          {message.length}/300
+        </p>
 
-        <div className="flex gap-3 mt-4">
+        <div className="flex items-center justify-end gap-6 mt-5">
           <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] font-medium hover:bg-[var(--bg-surface-hover)] transition-all text-sm"
+            onClick={handleClose}
+            className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSend}
             disabled={sending}
-            className="flex-1 py-2.5 rounded-lg bg-[var(--accent-primary)] text-[var(--bg-primary)] font-semibold hover:opacity-90 transition-all text-sm disabled:opacity-50"
+            className="text-sm text-[var(--accent-primary)] underline underline-offset-4 decoration-[var(--accent-primary)] hover:decoration-[2px] disabled:opacity-50 transition-all"
           >
-            {sending ? 'Sending...' : 'Send Request'}
+            {sending ? 'Sending…' : 'Send request →'}
           </button>
         </div>
       </div>

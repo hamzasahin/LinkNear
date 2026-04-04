@@ -1,18 +1,25 @@
 import { useState, useEffect } from 'react'
 import { useConnections } from '../hooks/useConnections'
 import ConnectionModal from './ConnectionModal'
-import type { Profile } from '../types'
 
 interface ConnectionButtonProps {
   targetUserId: string
-  targetProfile?: Profile | null
+  targetProfileName?: string
   onStatusChange?: () => void
 }
 
-export default function ConnectionButton({ targetUserId, targetProfile, onStatusChange }: ConnectionButtonProps) {
-  const { connections, getConnections, sendConnection, respondToConnection, getConnectionStatus } = useConnections()
+export default function ConnectionButton({ targetUserId, targetProfileName, onStatusChange }: ConnectionButtonProps) {
+  const {
+    connections,
+    getConnections,
+    sendConnection,
+    respondToConnection,
+    cancelRequest,
+    getConnectionStatus,
+  } = useConnections()
   const [modalOpen, setModalOpen] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
     getConnections()
@@ -25,16 +32,31 @@ export default function ConnectionButton({ targetUserId, targetProfile, onStatus
 
   const handleSend = async (message: string) => {
     setActionLoading(true)
-    await sendConnection(targetUserId, message)
+    setActionError(null)
+    const { error } = await sendConnection(targetUserId, message)
+    if (error) setActionError(error)
     await getConnections()
     setActionLoading(false)
     onStatusChange?.()
   }
 
-  const handleRespond = async (connStatus: 'accepted' | 'declined') => {
+  const handleRespond = async (accept: boolean) => {
     if (!pendingConn) return
     setActionLoading(true)
-    await respondToConnection(pendingConn.id, connStatus)
+    setActionError(null)
+    const { error } = await respondToConnection(pendingConn.id, accept)
+    if (error) setActionError(error)
+    await getConnections()
+    setActionLoading(false)
+    onStatusChange?.()
+  }
+
+  const handleCancel = async () => {
+    if (!pendingConn) return
+    setActionLoading(true)
+    setActionError(null)
+    const { error } = await cancelRequest(pendingConn.id)
+    if (error) setActionError(error)
     await getConnections()
     setActionLoading(false)
     onStatusChange?.()
@@ -42,55 +64,70 @@ export default function ConnectionButton({ targetUserId, targetProfile, onStatus
 
   if (status === 'accepted') {
     return (
-      <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[rgba(16,185,129,0.15)] text-[var(--success)] border border-[rgba(16,185,129,0.3)] text-sm font-semibold">
-        <span>✓</span> Connected
+      <span className="inline-flex items-center gap-2 font-pixel text-[11px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">
+        <span aria-hidden>·</span> Connected
       </span>
     )
   }
 
   if (status === 'pending_sent') {
     return (
-      <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--bg-surface)] text-[var(--text-tertiary)] border border-[var(--border)] text-sm font-medium">
-        Request Sent
-      </span>
+      <div className="flex items-center gap-4 text-sm">
+        <span className="font-pixel text-[11px] uppercase tracking-[0.08em] text-[var(--text-faint)]">
+          · Request sent
+        </span>
+        <button
+          onClick={handleCancel}
+          disabled={actionLoading}
+          className="text-[var(--text-tertiary)] hover:text-[var(--danger)] disabled:opacity-50 transition-colors text-xs"
+        >
+          Cancel
+        </button>
+      </div>
     )
   }
 
   if (status === 'pending_received') {
     return (
-      <div className="flex gap-2">
-        <button
-          onClick={() => handleRespond('accepted')}
-          disabled={actionLoading}
-          className="px-4 py-2 rounded-lg bg-[var(--accent-primary)] text-[var(--bg-primary)] font-semibold hover:opacity-90 transition-all text-sm disabled:opacity-50"
-        >
-          Accept
-        </button>
-        <button
-          onClick={() => handleRespond('declined')}
-          disabled={actionLoading}
-          className="px-4 py-2 rounded-lg border border-[var(--danger)] text-[var(--danger)] font-medium hover:bg-[rgba(239,68,68,0.1)] transition-all text-sm disabled:opacity-50"
-        >
-          Decline
-        </button>
+      <div>
+        <div className="flex items-center gap-4 text-sm">
+          <button
+            onClick={() => handleRespond(true)}
+            disabled={actionLoading}
+            className="text-[var(--accent-primary)] underline underline-offset-4 decoration-[var(--accent-primary)] hover:decoration-[2px] disabled:opacity-50 transition-all"
+          >
+            Accept →
+          </button>
+          <button
+            onClick={() => handleRespond(false)}
+            disabled={actionLoading}
+            className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-50 transition-colors"
+          >
+            Decline
+          </button>
+        </div>
+        {actionError && <p className="text-xs text-[var(--danger)] mt-1">{actionError}</p>}
       </div>
     )
   }
 
   return (
     <>
-      <button
-        onClick={() => setModalOpen(true)}
-        disabled={actionLoading}
-        className="px-4 py-2 rounded-lg bg-[var(--accent-primary)] text-[var(--bg-primary)] font-semibold hover:opacity-90 transition-all text-sm disabled:opacity-50"
-      >
-        Connect
-      </button>
+      <div>
+        <button
+          onClick={() => setModalOpen(true)}
+          disabled={actionLoading}
+          className="text-sm text-[var(--accent-primary)] underline underline-offset-4 decoration-[var(--accent-primary)] hover:decoration-[2px] disabled:opacity-50 transition-all"
+        >
+          {actionLoading ? 'Sending…' : 'Connect →'}
+        </button>
+        {actionError && <p className="text-xs text-[var(--danger)] mt-1">{actionError}</p>}
+      </div>
       <ConnectionModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         onSend={handleSend}
-        recipientName={targetProfile?.full_name || 'this person'}
+        recipientName={targetProfileName || 'this person'}
       />
     </>
   )

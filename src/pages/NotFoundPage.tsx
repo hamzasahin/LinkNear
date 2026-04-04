@@ -5,18 +5,24 @@ export default function NotFoundPage() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center px-4 text-center">
-      <div className="animate-float text-8xl mb-6">🗺️</div>
-      <h1 className="font-display text-5xl text-[var(--text-primary)] mb-3">You've wandered too far!</h1>
-      <p className="text-[var(--text-secondary)] mb-8 max-w-sm">
-        This page doesn't exist. Let's get you back to somewhere familiar.
+      <p className="font-pixel text-[11px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] mb-6">
+        Error
+      </p>
+      <div className="font-pixel text-[clamp(5rem,14vw,10rem)] text-[var(--text-primary)] leading-none mb-8 tracking-tighter">
+        404
+      </div>
+      <h1 className="font-display text-3xl md:text-4xl text-[var(--text-primary)] mb-3 leading-tight">
+        This page does not exist.
+      </h1>
+      <p className="text-[var(--text-tertiary)] text-sm max-w-sm mb-8">
+        You have wandered past the edge of the map.
       </p>
       <button
         onClick={() => navigate('/discover')}
-        className="px-6 py-3 rounded-xl bg-[var(--accent-primary)] text-[var(--bg-primary)] font-semibold hover:opacity-90 transition-all"
+        className="text-sm text-[var(--accent-primary)] underline underline-offset-4 decoration-[var(--accent-primary)] hover:decoration-[2px] transition-all"
       >
-        ← Back to Discover
+        Back to Discover →
       </button>
-      <p className="mt-4 text-xs text-[var(--text-tertiary)]">Error 404 — Page not found</p>
     </div>
   )
 }

@@ -11,14 +11,13 @@ const SIZES = {
   xl: 'w-24 h-24 text-3xl',
 }
 
+// Warm editorial palette — no bright colors, avatars read as portraits
 const COLORS = [
-  'bg-[#00BFA6]',
-  'bg-[#FF6B6B]',
-  'bg-[#FFB347]',
-  'bg-[#6C63FF]',
-  'bg-[#3ABEFF]',
-  'bg-[#FF85A1]',
-  'bg-[#43D9A2]',
+  'bg-[#3d3733]',
+  'bg-[#494440]',
+  'bg-[#706a64]',
+  'bg-[#8a7a68]',
+  'bg-[#a08b76]',
 ]
 
 function getColorClass(name: string): string {
@@ -45,7 +44,7 @@ export default function Avatar({ src, name, size = 'md' }: AvatarProps) {
       <img
         src={src}
         alt={name}
-        className={`${sizeClass} rounded-full object-cover flex-shrink-0 ring-2 ring-[var(--border)]`}
+        className={`${sizeClass} rounded-full object-cover flex-shrink-0 ring-1 ring-[var(--border-strong)]`}
         onError={(e) => {
           const t = e.currentTarget
           t.style.display = 'none'
@@ -57,7 +56,7 @@ export default function Avatar({ src, name, size = 'md' }: AvatarProps) {
 
   return (
     <div
-      className={`${sizeClass} ${colorClass} rounded-full flex items-center justify-center flex-shrink-0 font-bold text-white ring-2 ring-[var(--border)]`}
+      className={`${sizeClass} ${colorClass} rounded-full flex items-center justify-center flex-shrink-0 font-medium text-[var(--bg-primary)] ring-1 ring-[var(--border-strong)]`}
     >
       {initials}
     </div>

@@ -1,162 +1,210 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { useProfile } from '../hooks/useProfile'
+import { useParams, useNavigate, Link, useLocation as useRouterLocation } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useLocation } from '../hooks/useLocation'
-import type { Profile } from '../types'
+import type { ProfileWithDistance } from '../types'
 import Avatar from '../components/Avatar'
 import TagChip from '../components/TagChip'
 import ConnectionButton from '../components/ConnectionButton'
 import LoadingSpinner from '../components/LoadingSpinner'
+import { rpcWithRetry } from '../lib/rpcRetry'
 
-const LOOKING_FOR_ICONS: Record<string, string> = {
-  cofounder: '🚀',
-  'study-buddy': '📚',
-  mentor: '🎓',
-  mentee: '🌱',
-  collaborator: '🤝',
-  networking: '🌐',
-  friends: '😊',
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="font-pixel text-[11px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] mb-4">
+      {children}
+    </p>
+  )
 }
 
-function getDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371
-  const dLat = (lat2 - lat1) * Math.PI / 180
-  const dLng = (lng2 - lng1) * Math.PI / 180
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng/2) * Math.sin(dLng/2)
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+/**
+ * Coarse "last active" bucket so the UI never exposes minute-precision
+ * presence (an anti-stalking measure). The server already rounds `last_seen`
+ * to 5-minute buckets; we add extra coarsening on display.
+ */
+function formatLastSeen(dateStr: string, isOnline: boolean): string {
+  if (isOnline) return 'Online'
+  const diffMin = (Date.now() - new Date(dateStr).getTime()) / 60_000
+  if (diffMin < 5) return 'Active now'
+  if (diffMin < 60) return 'Active recently'
+  if (diffMin < 24 * 60) return 'Active today'
+  if (diffMin < 7 * 24 * 60) return 'Active this week'
+  return 'Active a while ago'
 }
 
 export default function ProfilePage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
-  const { getProfile } = useProfile()
   const location = useLocation()
   const navigate = useNavigate()
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [loading, setLoading] = useState(true)
+  const routerLocation = useRouterLocation()
+  const navState = routerLocation.state as { distance_km?: number } | null
+  const fallbackDistance = navState?.distance_km ?? null
+
+  const requestKey = id
+    ? [id, location.latitude ?? 'none', location.longitude ?? 'none', fallbackDistance ?? 'none'].join(':')
+    : null
+  const [profileState, setProfileState] = useState<{
+    requestKey: string | null
+    profile: ProfileWithDistance | null
+    error: string | null
+  }>({
+    requestKey: null,
+    profile: null,
+    error: null,
+  })
 
   const isOwnProfile = user?.id === id
 
   useEffect(() => {
-    if (!id) return
-    setLoading(true)
-    getProfile(id).then(p => {
-      setProfile(p)
-      setLoading(false)
-    })
-  }, [id])
+    if (!id || !requestKey) return
 
-  if (loading) return <LoadingSpinner fullScreen message="Loading profile..." />
-  if (!profile) {
+    let cancelled = false
+
+    rpcWithRetry<ProfileWithDistance[]>(() =>
+      supabase.rpc('get_profile_with_distance', {
+        p_id: id,
+        user_lat: location.latitude,
+        user_lng: location.longitude,
+      })
+    )
+      .then(rows => {
+        if (cancelled) return
+        const row = rows?.[0] ?? null
+        setProfileState({
+          requestKey,
+          profile: row
+            ? {
+                ...row,
+                distance_km: row.distance_km ?? fallbackDistance,
+              }
+            : null,
+          error: null,
+        })
+      })
+      .catch(e => {
+        if (!cancelled) {
+          setProfileState({
+            requestKey,
+            profile: null,
+            error: e instanceof Error ? e.message : String(e),
+          })
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [fallbackDistance, id, location.latitude, location.longitude, requestKey])
+
+  const loading = Boolean(requestKey && profileState.requestKey !== requestKey)
+  const profile = profileState.requestKey === requestKey ? profileState.profile : null
+  const error = profileState.requestKey === requestKey ? profileState.error : null
+
+  if (loading) return <LoadingSpinner fullScreen message="Loading profile" />
+  if (error || !profile) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-16 text-center">
-        <p className="text-6xl mb-4">😕</p>
-        <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-2">Profile not found</h2>
-        <button onClick={() => navigate('/discover')} className="text-[var(--accent-primary)] hover:underline text-sm">
-          ← Back to Discover
+      <div className="max-w-2xl mx-auto px-6 py-20 text-center">
+        <p className="font-pixel text-[11px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] mb-4">
+          Not found
+        </p>
+        <h2 className="font-display text-3xl text-[var(--text-primary)] mb-6">
+          This profile no longer exists.
+        </h2>
+        {error && <p className="text-[var(--text-tertiary)] text-sm mb-6">{error}</p>}
+        <button
+          onClick={() => navigate('/discover')}
+          className="text-sm text-[var(--accent-primary)] underline underline-offset-4 decoration-[var(--accent-primary)] hover:decoration-[2px] transition-all"
+        >
+          Back to Discover →
         </button>
       </div>
     )
   }
 
-  const distance = location.latitude && profile.latitude
-    ? getDistance(location.latitude, location.longitude!, profile.latitude, profile.longitude!)
-    : null
-
-  const timeSince = (dateStr: string) => {
-    const diff = Date.now() - new Date(dateStr).getTime()
-    const mins = Math.floor(diff / 60000)
-    if (mins < 1) return 'just now'
-    if (mins < 60) return `${mins}m ago`
-    const hours = Math.floor(mins / 60)
-    if (hours < 24) return `${hours}h ago`
-    return `${Math.floor(hours / 24)}d ago`
-  }
-
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6">
+    <div className="max-w-2xl mx-auto px-6 py-12">
       <button
         onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors mb-6 text-sm"
+        className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors mb-10"
       >
         ← Back
       </button>
 
-      {/* Header card */}
-      <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-6 mb-4">
-        <div className="flex items-start gap-5">
-          <div className="relative flex-shrink-0">
-            <Avatar src={profile.avatar_url} name={profile.full_name} size="xl" />
-            <span className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-[var(--bg-surface)] ${profile.is_online ? 'bg-[var(--success)]' : 'bg-[var(--text-tertiary)]'}`} />
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <h1 className="font-display text-2xl text-[var(--text-primary)] mb-1">{profile.full_name}</h1>
-            {profile.headline && (
-              <p className="text-[var(--text-secondary)] text-sm mb-2">{profile.headline}</p>
-            )}
-
-            <div className="flex flex-wrap gap-3 text-xs text-[var(--text-tertiary)] mb-3">
-              {profile.location_name && (
-                <span>📍 {profile.location_name}</span>
-              )}
-              {distance !== null && (
-                <span>↔ {distance.toFixed(1)} km from you</span>
-              )}
-              <span>{profile.is_online ? '🟢 Online' : `⚫ Last seen ${timeSince(profile.last_seen)}`}</span>
-            </div>
-
-            {profile.looking_for && (
-              <span className="inline-flex items-center gap-1.5 text-xs bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] px-3 py-1.5 rounded-full border border-[var(--border)]">
-                {LOOKING_FOR_ICONS[profile.looking_for]} Looking for {profile.looking_for.replace('-', ' ')}
-              </span>
-            )}
-          </div>
+      {/* Header — editorial masthead */}
+      <header className="flex items-start gap-6 mb-10">
+        <div className="relative flex-shrink-0">
+          <Avatar src={profile.avatar_url} name={profile.full_name} size="xl" />
+          <span
+            className={`absolute bottom-1 right-1 w-3 h-3 rounded-full border-2 border-[var(--bg-primary)] ${
+              profile.is_online ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'
+            }`}
+          />
         </div>
 
-        <div className="mt-5 pt-5 border-t border-[var(--border)] flex gap-3">
-          {isOwnProfile ? (
-            <Link
-              to="/settings"
-              className="px-5 py-2.5 rounded-lg bg-[var(--accent-primary)] text-[var(--bg-primary)] font-semibold text-sm hover:opacity-90 transition-all"
-            >
-              Edit Profile
-            </Link>
-          ) : (
-            <ConnectionButton targetUserId={profile.id} targetProfile={profile} />
+        <div className="flex-1 min-w-0">
+          <h1 className="font-display text-4xl md:text-5xl text-[var(--text-primary)] leading-[1.05] mb-2">
+            {profile.full_name}
+          </h1>
+          {profile.headline && (
+            <p className="text-[var(--text-secondary)] text-base mb-4">{profile.headline}</p>
           )}
+
+          <div className="flex flex-wrap gap-x-5 gap-y-1.5 font-pixel text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+            {profile.location_name && <span>{profile.location_name}</span>}
+            {profile.distance_km !== null && profile.distance_km !== undefined && (
+              <span>{profile.distance_km.toFixed(1)} km away</span>
+            )}
+            <span>{formatLastSeen(profile.last_seen, profile.is_online)}</span>
+            {profile.looking_for && (
+              <span>Looking for {profile.looking_for.replace('-', ' ')}</span>
+            )}
+          </div>
+
+          <div className="mt-6">
+            {isOwnProfile ? (
+              <Link
+                to="/settings"
+                className="text-sm text-[var(--accent-primary)] underline underline-offset-4 decoration-[var(--accent-primary)] hover:decoration-[2px] transition-all"
+              >
+                Edit profile →
+              </Link>
+            ) : (
+              <ConnectionButton targetUserId={profile.id} targetProfileName={profile.full_name} />
+            )}
+          </div>
         </div>
-      </div>
+      </header>
 
       {/* Bio */}
       {profile.bio && (
-        <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-6 mb-4">
-          <h2 className="text-sm font-semibold text-[var(--text-tertiary)] uppercase tracking-widest mb-3">About</h2>
-          <p className="text-[var(--text-secondary)] text-sm leading-relaxed">{profile.bio}</p>
-        </div>
+        <section className="border-t border-[var(--border-strong)] pt-8 mb-10">
+          <SectionLabel>About</SectionLabel>
+          <p className="font-display text-lg text-[var(--text-primary)] leading-[1.45] max-w-prose whitespace-pre-wrap">
+            {profile.bio}
+          </p>
+        </section>
       )}
 
       {/* Skills */}
       {profile.skills.length > 0 && (
-        <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-6 mb-4">
-          <h2 className="text-sm font-semibold text-[var(--text-tertiary)] uppercase tracking-widest mb-3">Skills</h2>
+        <section className="border-t border-[var(--border-strong)] pt-8 mb-10">
+          <SectionLabel>Skills</SectionLabel>
           <div className="flex flex-wrap gap-2">
             {profile.skills.map(s => <TagChip key={s} label={s} variant="skill" />)}
           </div>
-        </div>
+        </section>
       )}
 
       {/* Interests */}
       {profile.interests.length > 0 && (
-        <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-6 mb-4">
-          <h2 className="text-sm font-semibold text-[var(--text-tertiary)] uppercase tracking-widest mb-3">Interests</h2>
+        <section className="border-t border-[var(--border-strong)] pt-8 mb-10">
+          <SectionLabel>Interests</SectionLabel>
           <div className="flex flex-wrap gap-2">
             {profile.interests.map(i => <TagChip key={i} label={i} variant="interest" />)}
           </div>
-        </div>
+        </section>
       )}
     </div>
   )

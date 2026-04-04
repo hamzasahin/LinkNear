@@ -1,8 +1,9 @@
+import { useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Profile } from '../types'
 
 export function useProfile() {
-  const getProfile = async (userId: string): Promise<Profile | null> => {
+  const getProfile = useCallback(async (userId: string): Promise<Profile | null> => {
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -10,15 +11,15 @@ export function useProfile() {
       .single()
     if (error) return null
     return data as Profile
-  }
+  }, [])
 
-  const getMyProfile = async (): Promise<Profile | null> => {
+  const getMyProfile = useCallback(async (): Promise<Profile | null> => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return null
     return getProfile(user.id)
-  }
+  }, [getProfile])
 
-  const updateProfile = async (data: Partial<Profile>): Promise<{ error: string | null }> => {
+  const updateProfile = useCallback(async (data: Partial<Profile>): Promise<{ error: string | null }> => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Not authenticated' }
 
@@ -27,9 +28,9 @@ export function useProfile() {
       .upsert({ ...data, id: user.id, updated_at: new Date().toISOString() })
 
     return { error: error?.message || null }
-  }
+  }, [])
 
-  const uploadAvatar = async (file: File): Promise<string | null> => {
+  const uploadAvatar = useCallback(async (file: File): Promise<string | null> => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return null
 
@@ -39,7 +40,7 @@ export function useProfile() {
 
     const { data } = supabase.storage.from('avatars').getPublicUrl(path)
     return data.publicUrl
-  }
+  }, [])
 
   return { getProfile, getMyProfile, updateProfile, uploadAvatar }
 }

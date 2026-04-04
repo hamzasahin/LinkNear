@@ -9,18 +9,18 @@ interface EmptyStateProps {
 
 export default function EmptyState({ icon, title, description, action }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+    <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
       {icon && (
-        <div className="text-5xl mb-4 opacity-60">{icon}</div>
+        <div className="font-pixel text-3xl text-[var(--text-faint)] mb-6">{icon}</div>
       )}
-      <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">{title}</h3>
-      <p className="text-[var(--text-secondary)] text-sm max-w-xs mb-6">{description}</p>
+      <h3 className="font-display text-2xl text-[var(--text-primary)] mb-3 leading-tight">{title}</h3>
+      <p className="text-[var(--text-tertiary)] text-sm max-w-sm mb-6">{description}</p>
       {action && (
         <button
           onClick={action.onClick}
-          className="px-5 py-2.5 bg-[var(--accent-primary)] text-[var(--bg-primary)] font-semibold rounded-lg hover:opacity-90 transition-all text-sm"
+          className="text-sm text-[var(--accent-primary)] underline underline-offset-4 decoration-[var(--accent-primary)] hover:decoration-[2px] transition-all"
         >
-          {action.label}
+          {action.label} →
         </button>
       )}
     </div>

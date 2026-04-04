@@ -34,25 +34,20 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
 }
 
 export function useLocation(): UseLocationReturn {
+  const geolocationSupported = typeof navigator !== 'undefined' && 'geolocation' in navigator
+
   const [state, setState] = useState<LocationState>({
     latitude: null,
     longitude: null,
     locationName: '',
-    error: null,
-    loading: true,
+    error: geolocationSupported ? null : 'Geolocation is not supported by your browser.',
+    loading: geolocationSupported,
   })
 
-  const detect = () => {
-    setState(s => ({ ...s, loading: true, error: null }))
+  const refreshLocation = () => {
+    if (!geolocationSupported) return
 
-    if (!navigator.geolocation) {
-      setState(s => ({
-        ...s,
-        loading: false,
-        error: 'Geolocation is not supported by your browser.',
-      }))
-      return
-    }
+    setState(s => ({ ...s, loading: true, error: null }))
 
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
@@ -72,12 +67,38 @@ export function useLocation(): UseLocationReturn {
   }
 
   useEffect(() => {
-    detect()
-  }, [])
+    if (!geolocationSupported) return
+
+    let cancelled = false
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords
+        const locationName = await reverseGeocode(latitude, longitude)
+        if (!cancelled) {
+          setState({ latitude, longitude, locationName, error: null, loading: false })
+        }
+      },
+      (err) => {
+        if (!cancelled) {
+          setState(s => ({
+            ...s,
+            loading: false,
+            error: err.message || 'Unable to retrieve your location.',
+          }))
+        }
+      },
+      { timeout: 10000, maximumAge: 60000 }
+    )
+
+    return () => {
+      cancelled = true
+    }
+  }, [geolocationSupported])
 
   const setManualLocation = (lat: number, lng: number, name: string) => {
     setState({ latitude: lat, longitude: lng, locationName: name, error: null, loading: false })
   }
 
-  return { ...state, refreshLocation: detect, setManualLocation }
+  return { ...state, refreshLocation, setManualLocation }
 }

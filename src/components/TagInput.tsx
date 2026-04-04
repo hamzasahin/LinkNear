@@ -44,7 +44,7 @@ export default function TagInput({ tags, onChange, suggestions, placeholder, var
   return (
     <div className="relative">
       <div
-        className="min-h-[52px] flex flex-wrap gap-2 items-center p-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] focus-within:border-[var(--accent-primary)] focus-within:ring-1 focus-within:ring-[var(--accent-primary)] transition-all cursor-text"
+        className="min-h-[52px] flex flex-wrap gap-2 items-center p-3 rounded-[var(--radius-md)] border border-[var(--border-strong)] bg-[var(--bg-primary)] focus-within:border-[var(--accent-primary)] focus-within:ring-1 focus-within:ring-[var(--accent-primary)] transition-colors cursor-text"
         onClick={() => inputRef.current?.focus()}
       >
         {tags.map(tag => (
@@ -66,12 +66,12 @@ export default function TagInput({ tags, onChange, suggestions, placeholder, var
       </div>
 
       {showSuggestions && filteredSuggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-xl z-20 overflow-hidden">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-[var(--bg-primary)] border border-[var(--border-strong)] rounded-[var(--radius-md)] z-20 overflow-hidden">
           {filteredSuggestions.map(s => (
             <button
               key={s}
               onMouseDown={() => addTag(s)}
-              className="w-full text-left px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+              className="w-full text-left px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-surface)] transition-colors"
             >
               {s}
             </button>
@@ -79,7 +79,9 @@ export default function TagInput({ tags, onChange, suggestions, placeholder, var
         </div>
       )}
 
-      <p className="text-xs text-[var(--text-tertiary)] mt-1">Press Enter or comma to add</p>
+      <p className="font-pixel text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)] mt-2">
+        Enter or comma to add
+      </p>
     </div>
   )
 }
