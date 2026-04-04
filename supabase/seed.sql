@@ -1,0 +1,13 @@
+-- NOTE: These profiles won't have auth.users entries.
+-- For a real demo, you'll need to sign up with Google OAuth to create real profiles.
+-- These are useful for testing the discover page UI.
+
+INSERT INTO profiles (id, full_name, headline, bio, skills, interests, looking_for, latitude, longitude, location_name, is_online) VALUES
+(uuid_generate_v4(), 'Alex Chen', 'ML Engineer at DeepMind', 'Building neural nets by day, hiking by weekend. Passionate about responsible AI.', ARRAY['Python','PyTorch','MLOps','Kubernetes','TensorFlow'], ARRAY['AI Ethics','Hiking','Open Source','Photography'], 'collaborator', 37.3382, -121.8863, 'San Jose, CA', true),
+(uuid_generate_v4(), 'Sara Kim', 'UX Designer & Researcher', 'Human-centered design advocate. Previously at Airbnb.', ARRAY['Figma','User Research','Prototyping','CSS','Design Systems'], ARRAY['Accessibility','Yoga','Travel','Startups'], 'cofounder', 37.3361, -121.8906, 'Downtown San Jose', true),
+(uuid_generate_v4(), 'Marcus Johnson', 'Full Stack Dev | React + Node', 'Building products that matter. Open to side projects.', ARRAY['React','TypeScript','Node.js','PostgreSQL','GraphQL'], ARRAY['Startups','Gaming','Music Production','Fitness'], 'networking', 37.3500, -121.9100, 'Santa Clara', false),
+(uuid_generate_v4(), 'Priya Patel', 'Data Scientist @ Netflix', 'Stats nerd, coffee lover. Looking to mentor juniors.', ARRAY['Python','R','SQL','Tableau','Statistics','Spark'], ARRAY['Data Viz','Reading','Cooking','AI Ethics'], 'mentor', 37.3230, -121.9200, 'Campbell, CA', true),
+(uuid_generate_v4(), 'Jordan Lee', 'CS Student at SJSU', 'Sophomore looking for study buddies and internship tips!', ARRAY['Java','Python','React','Git','Algorithms'], ARRAY['Algorithms','Gaming','Anime','Hackathons'], 'study-buddy', 37.3352, -121.8811, 'SJSU Campus', true),
+(uuid_generate_v4(), 'Emily Torres', 'Product Manager | B2B SaaS', 'Bridging tech and business. Love building 0-to-1.', ARRAY['Product Strategy','Agile','SQL','Analytics','Roadmapping'], ARRAY['Startups','Public Speaking','Running','Podcasts'], 'networking', 37.3700, -121.9220, 'Sunnyvale, CA', false),
+(uuid_generate_v4(), 'Raj Mehta', 'Firmware Engineer | IoT', 'Embedded systems and automation. Building smart devices.', ARRAY['C','C++','Python','Embedded Systems','IoT','RTOS'], ARRAY['Robotics','Open Source','Hiking','Climate Tech'], 'collaborator', 37.3541, -121.9552, 'Cupertino, CA', true),
+(uuid_generate_v4(), 'Nadia Volkov', 'DevRel & Open Source Advocate', 'Making tech more accessible. Conference speaker.', ARRAY['JavaScript','TypeScript','Technical Writing','DevOps','Community'], ARRAY['Open Source','Public Speaking','Education','Travel'], 'networking', 37.3874, -122.0575, 'Mountain View, CA', false);
