@@ -40,7 +40,22 @@ CREATE TABLE IF NOT EXISTS profiles (
   discovery_enabled BOOLEAN NOT NULL DEFAULT true,
   date_of_birth DATE CHECK (date_of_birth IS NULL OR date_of_birth <= (CURRENT_DATE - INTERVAL '13 years')),
   terms_accepted_at TIMESTAMPTZ,
-  onboarding_completed_at TIMESTAMPTZ
+  onboarding_completed_at TIMESTAMPTZ,
+  -- Photo privacy
+  show_photo_publicly BOOLEAN DEFAULT false,
+  -- Challenge / streak system
+  streak_count INT DEFAULT 0,
+  longest_streak INT DEFAULT 0,
+  total_points INT DEFAULT 0,
+  challenges_completed INT DEFAULT 0,
+  last_challenge_date DATE,
+  -- Quiz
+  quiz_completed BOOLEAN DEFAULT false,
+  -- Premium
+  is_premium BOOLEAN DEFAULT false,
+  premium_until TIMESTAMPTZ,
+  -- Email preferences
+  email_digest BOOLEAN DEFAULT true
 );
 
 -- Normalize on write: round lat/lng to ~100m, dedupe/trim tag arrays, touch updated_at
@@ -195,6 +210,69 @@ CREATE TABLE IF NOT EXISTS storage_cleanup (
 CREATE INDEX IF NOT EXISTS idx_storage_cleanup_created ON storage_cleanup(created_at);
 
 -- =============================================================================
+-- CHARACTER QUIZ
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS character_quiz (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE UNIQUE,
+  core_values TEXT[] DEFAULT '{}',
+  communication_style TEXT DEFAULT 'balanced',
+  work_style TEXT DEFAULT 'flexible',
+  raw_answers JSONB DEFAULT '{}',
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- =============================================================================
+-- CHALLENGES
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS challenges (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  category TEXT NOT NULL CHECK (category IN ('kindness', 'knowledge', 'community', 'self', 'generosity', 'gratitude')),
+  source TEXT,
+  source_text TEXT,
+  difficulty TEXT DEFAULT 'easy' CHECK (difficulty IN ('easy', 'medium', 'hard')),
+  points INT DEFAULT 10,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS user_challenges (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  challenge_id UUID REFERENCES challenges(id),
+  assigned_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  completed BOOLEAN DEFAULT false,
+  completed_at TIMESTAMPTZ,
+  reflection TEXT,
+  shared_to_feed BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, assigned_date)
+);
+
+-- =============================================================================
+-- FEED
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS feed_posts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  content TEXT NOT NULL CHECK (char_length(content) <= 500),
+  post_type TEXT DEFAULT 'reflection' CHECK (post_type IN ('reflection', 'challenge_complete', 'milestone', 'gratitude', 'learning')),
+  challenge_id UUID REFERENCES challenges(id),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS feed_likes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  post_id UUID REFERENCES feed_posts(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(post_id, user_id)
+);
+
+-- =============================================================================
 -- ROW LEVEL SECURITY
 -- =============================================================================
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
@@ -204,6 +282,11 @@ ALTER TABLE blocks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rate_limits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE storage_cleanup ENABLE ROW LEVEL SECURITY;
+ALTER TABLE character_quiz ENABLE ROW LEVEL SECURITY;
+ALTER TABLE challenges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_challenges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE feed_posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE feed_likes ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS profiles_select ON profiles;
 CREATE POLICY profiles_select ON profiles FOR SELECT
@@ -254,6 +337,119 @@ CREATE POLICY blocks_delete_own ON blocks FOR DELETE USING (blocker_id = auth.ui
 
 DROP POLICY IF EXISTS reports_insert_own ON reports;
 CREATE POLICY reports_insert_own ON reports FOR INSERT WITH CHECK (reporter_id = auth.uid());
+
+DROP POLICY IF EXISTS "Own quiz" ON character_quiz;
+CREATE POLICY "Own quiz" ON character_quiz FOR ALL USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Read quiz basics" ON character_quiz;
+CREATE POLICY "Read quiz basics" ON character_quiz FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS challenges_select ON challenges;
+CREATE POLICY challenges_select ON challenges FOR SELECT USING (true);
+DROP POLICY IF EXISTS user_challenges_all ON user_challenges;
+CREATE POLICY user_challenges_all ON user_challenges FOR ALL USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS feed_posts_select ON feed_posts;
+CREATE POLICY feed_posts_select ON feed_posts FOR SELECT USING (true);
+DROP POLICY IF EXISTS feed_posts_insert ON feed_posts;
+CREATE POLICY feed_posts_insert ON feed_posts FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS feed_posts_delete ON feed_posts;
+CREATE POLICY feed_posts_delete ON feed_posts FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS feed_likes_select ON feed_likes;
+CREATE POLICY feed_likes_select ON feed_likes FOR SELECT USING (true);
+DROP POLICY IF EXISTS feed_likes_insert ON feed_likes;
+CREATE POLICY feed_likes_insert ON feed_likes FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS feed_likes_delete ON feed_likes;
+CREATE POLICY feed_likes_delete ON feed_likes FOR DELETE USING (auth.uid() = user_id);
+
+-- =============================================================================
+-- FEED RPC
+-- =============================================================================
+CREATE OR REPLACE FUNCTION get_local_feed(
+  user_lat FLOAT,
+  user_lng FLOAT,
+  radius_km FLOAT DEFAULT 8,
+  page_limit INT DEFAULT 20,
+  page_offset INT DEFAULT 0
+)
+RETURNS TABLE (
+  post_id UUID,
+  user_id UUID,
+  full_name TEXT,
+  headline TEXT,
+  avatar_url TEXT,
+  show_photo_publicly BOOLEAN,
+  content TEXT,
+  post_type TEXT,
+  challenge_title TEXT,
+  challenge_source TEXT,
+  challenge_source_text TEXT,
+  likes_count BIGINT,
+  created_at TIMESTAMPTZ
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    fp.id AS post_id,
+    fp.user_id,
+    p.full_name,
+    p.headline,
+    p.avatar_url,
+    p.show_photo_publicly,
+    fp.content,
+    fp.post_type,
+    c.title AS challenge_title,
+    c.source AS challenge_source,
+    c.source_text AS challenge_source_text,
+    (SELECT COUNT(*) FROM feed_likes fl WHERE fl.post_id = fp.id) AS likes_count,
+    fp.created_at
+  FROM feed_posts fp
+  JOIN profiles p ON fp.user_id = p.id
+  LEFT JOIN challenges c ON fp.challenge_id = c.id
+  WHERE p.latitude IS NOT NULL
+    AND p.longitude IS NOT NULL
+    AND earth_distance(
+      ll_to_earth(user_lat, user_lng),
+      ll_to_earth(p.latitude, p.longitude)
+    ) <= radius_km * 1000
+  ORDER BY fp.created_at DESC
+  LIMIT page_limit
+  OFFSET page_offset;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =============================================================================
+-- SEARCH RPC
+-- =============================================================================
+CREATE OR REPLACE FUNCTION search_profiles(
+  search_query TEXT,
+  current_user_id UUID DEFAULT NULL
+)
+RETURNS TABLE (
+  id UUID,
+  full_name TEXT,
+  headline TEXT,
+  skills TEXT[],
+  interests TEXT[],
+  looking_for TEXT,
+  location_name TEXT
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    p.id, p.full_name, p.headline,
+    p.skills, p.interests, p.looking_for, p.location_name
+  FROM profiles p
+  WHERE p.id != current_user_id
+    AND p.deleted_at IS NULL
+    AND (
+      p.full_name ILIKE '%' || search_query || '%'
+      OR p.headline ILIKE '%' || search_query || '%'
+      OR EXISTS (SELECT 1 FROM unnest(p.skills) s WHERE s ILIKE '%' || search_query || '%')
+      OR EXISTS (SELECT 1 FROM unnest(p.interests) i WHERE i ILIKE '%' || search_query || '%')
+    )
+  LIMIT 20;
+END;
+$$ LANGUAGE plpgsql;
 
 -- =============================================================================
 -- RPCs and mutation functions (send_connection_request, send_message,

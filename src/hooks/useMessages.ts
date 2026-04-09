@@ -3,9 +3,11 @@ import { supabase } from '../lib/supabase'
 import type { Message } from '../types'
 import { useAuth } from '../contexts/AuthContext'
 import { useRealtime } from '../contexts/RealtimeContext'
+import { track } from '../lib/analytics'
 import { rpcWithRetry } from '../lib/rpcRetry'
 
 const PAGE_SIZE = 50
+const POLL_INTERVAL_MS = 3000 // Poll every 3s as a Realtime fallback
 
 interface UseMessagesReturn {
   messages: Message[]
@@ -21,16 +23,13 @@ interface UseMessagesReturn {
 /**
  * Fetches + live-subscribes to messages for one connection.
  *
- * - Initial load: newest page via `get_messages_page` (keyset by created_at).
- * - `loadMore`: fetches older messages using the oldest currently-loaded
- *   `created_at` as the cursor.
- * - Real-time: listens to the RealtimeContext's per-connection version
- *   counter — any INSERT/UPDATE/DELETE on this connection's messages
- *   triggers a refetch of the newest page (deduped on merge).
+ * Uses a dual strategy: Realtime events + polling fallback.
+ * Realtime may not fire reliably due to complex RLS on messages,
+ * so we poll every few seconds as a safety net.
  */
 export function useMessages(connectionId: string | undefined): UseMessagesReturn {
   const { user } = useAuth()
-  const { getMessagesVersion } = useRealtime()
+  const { getMessagesVersion, refresh: refreshRealtime } = useRealtime()
   const liveVersion = connectionId ? getMessagesVersion(connectionId) : 0
 
   const [messages, setMessages] = useState<Message[]>([])
@@ -39,54 +38,63 @@ export function useMessages(connectionId: string | undefined): UseMessagesReturn
   const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const oldestCursorRef = useRef<string | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const mountedRef = useRef(true)
+
+  const fetchNewest = useCallback(async (): Promise<Message[]> => {
+    if (!connectionId) return []
+    const rows = await rpcWithRetry<Message[]>(() =>
+      supabase.rpc('get_messages_page', {
+        p_connection_id: connectionId,
+        p_before: null,
+        p_limit: PAGE_SIZE,
+      })
+    )
+    return (rows ?? []).slice().reverse()
+  }, [connectionId])
 
   const loadInitial = useCallback(async () => {
     if (!connectionId) return
     setLoading(true)
     setError(null)
     try {
-      const rows = await rpcWithRetry<Message[]>(() =>
-        supabase.rpc('get_messages_page', {
-          p_connection_id: connectionId,
-          p_before: null,
-          p_limit: PAGE_SIZE,
-        })
-      )
-      // RPC returns newest-first; reverse to oldest-first for display.
-      const ordered = (rows ?? []).slice().reverse()
+      const ordered = await fetchNewest()
+      if (!mountedRef.current) return
       setMessages(ordered)
-      setHasMore((rows ?? []).length === PAGE_SIZE)
+      setHasMore(ordered.length === PAGE_SIZE)
       oldestCursorRef.current = ordered[0]?.created_at ?? null
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      if (mountedRef.current) setError(e instanceof Error ? e.message : String(e))
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
-  }, [connectionId])
+  }, [connectionId, fetchNewest])
 
-  // Merge new rows from live events into current state without duplicates.
+  // Merge new rows into current state without duplicates.
   const mergeNewest = useCallback(async () => {
     if (!connectionId) return
     try {
-      const rows = await rpcWithRetry<Message[]>(() =>
-        supabase.rpc('get_messages_page', {
-          p_connection_id: connectionId,
-          p_before: null,
-          p_limit: PAGE_SIZE,
-        })
-      )
-      const ordered = (rows ?? []).slice().reverse()
+      const ordered = await fetchNewest()
+      if (!mountedRef.current) return
       setMessages(prev => {
-        const byId = new Map(prev.map(m => [m.id, m]))
-        ordered.forEach(m => byId.set(m.id, m))
+        // Start from non-optimistic messages only
+        const byId = new Map(prev.filter(m => !m.id.startsWith('optimistic-')).map(m => [m.id, m]))
+        let changed = prev.some(m => m.id.startsWith('optimistic-'))
+        for (const m of ordered) {
+          if (!byId.has(m.id) || byId.get(m.id)!.read_at !== m.read_at) {
+            byId.set(m.id, m)
+            changed = true
+          }
+        }
+        if (!changed) return prev
         return Array.from(byId.values()).sort((a, b) =>
           a.created_at.localeCompare(b.created_at)
         )
       })
     } catch {
-      // Swallow — next user action or refetch will recover.
+      // Swallow — next poll will retry.
     }
-  }, [connectionId])
+  }, [connectionId, fetchNewest])
 
   const loadMore = useCallback(async () => {
     if (!connectionId || !hasMore || loadingMore || loading) return
@@ -120,6 +128,19 @@ export function useMessages(connectionId: string | undefined): UseMessagesReturn
     if (!trimmed) return { error: 'Message is empty' }
     if (trimmed.length > 2000) return { error: 'Message is too long (max 2000 chars)' }
 
+    // Optimistic update — add the message immediately so the user sees it
+    const optimisticId = `optimistic-${Date.now()}`
+    const optimisticMsg: Message = {
+      id: optimisticId,
+      connection_id: connectionId,
+      sender_id: user.id,
+      body: trimmed,
+      created_at: new Date().toISOString(),
+      read_at: null,
+      edited_at: null,
+    }
+    setMessages(prev => [...prev, optimisticMsg])
+
     try {
       await rpcWithRetry<string>(() =>
         supabase.rpc('send_message', {
@@ -127,10 +148,14 @@ export function useMessages(connectionId: string | undefined): UseMessagesReturn
           p_body: trimmed,
         })
       )
-      // Realtime will deliver the INSERT event, which triggers mergeNewest.
-      // No optimistic update needed — latency is low.
+      // Remove the optimistic placeholder, then fetch the real message from server
+      setMessages(prev => prev.filter(m => m.id !== optimisticId))
+      void mergeNewest()
+      track('message_sent')
       return { error: null }
     } catch (e) {
+      // Remove optimistic message on failure
+      setMessages(prev => prev.filter(m => m.id !== optimisticId))
       return { error: e instanceof Error ? e.message : String(e) }
     }
   }
@@ -141,23 +166,38 @@ export function useMessages(connectionId: string | undefined): UseMessagesReturn
       await rpcWithRetry<number>(() =>
         supabase.rpc('mark_messages_read', { p_connection_id: connectionId })
       )
+      // Tell RealtimeContext to refresh the badge count immediately
+      refreshRealtime()
     } catch {
       // Non-critical.
     }
-  }, [connectionId])
+  }, [connectionId, refreshRealtime])
 
-  // Initial load when connection changes.
+  // Initial load
   useEffect(() => {
+    mountedRef.current = true
     loadInitial()
+    return () => { mountedRef.current = false }
   }, [loadInitial])
 
-  // Re-merge when the RealtimeContext reports a new event for this connection.
+  // Re-merge on Realtime events
   useEffect(() => {
     if (liveVersion > 0) {
       void mergeNewest()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveVersion])
+
+  // Polling fallback — catches messages that Realtime missed
+  useEffect(() => {
+    if (!connectionId) return
+    pollRef.current = setInterval(() => {
+      void mergeNewest()
+    }, POLL_INTERVAL_MS)
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
+  }, [connectionId, mergeNewest])
 
   return {
     messages,

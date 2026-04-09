@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useLocation } from '../hooks/useLocation'
 import { useModeration } from '../hooks/useModeration'
+import { useConnections } from '../hooks/useConnections'
+import { shouldShowPhoto } from '../utils/photoPrivacy'
 import type { ProfileWithDistance, ReportCategory } from '../types'
 import Avatar from '../components/Avatar'
 import TagChip from '../components/TagChip'
@@ -45,10 +47,15 @@ export default function ProfilePage() {
   const navState = routerLocation.state as { distance_km?: number } | null
   const fallbackDistance = navState?.distance_km ?? null
   const { blockUser, reportUser } = useModeration()
+  const { getConnections, getConnectionStatus } = useConnections()
   const [menuOpen, setMenuOpen] = useState(false)
   const [blockModalOpen, setBlockModalOpen] = useState(false)
   const [reportModalOpen, setReportModalOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    getConnections()
+  }, [getConnections])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -120,6 +127,16 @@ export default function ProfilePage() {
   const profile = profileState.requestKey === requestKey ? profileState.profile : null
   const error = profileState.requestKey === requestKey ? profileState.error : null
 
+  const connectionStatus = id ? getConnectionStatus(id) : 'none'
+  const photoRevealed = !id || !user?.id
+    ? true
+    : shouldShowPhoto(
+        id,
+        user.id,
+        profile?.show_photo_publicly ?? false,
+        connectionStatus as 'none' | 'pending_sent' | 'pending_received' | 'accepted' | 'declined'
+      )
+
   if (loading) return <LoadingSpinner fullScreen message="Loading profile" />
   if (error || !profile) {
     return (
@@ -183,7 +200,12 @@ export default function ProfilePage() {
       {/* Header — editorial masthead */}
       <header className="flex items-start gap-6 mb-10">
         <div className="relative flex-shrink-0">
-          <Avatar src={profile.avatar_url} name={profile.full_name} size="xl" />
+          <Avatar src={profile.avatar_url} name={profile.full_name} size="xl" revealed={photoRevealed} />
+          {!photoRevealed && (
+            <p className="font-pixel text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)] mt-2 text-center max-w-[6rem]">
+              Photos become visible after connecting.
+            </p>
+          )}
           <span
             className={`absolute bottom-1 right-1 w-3 h-3 rounded-full border-2 border-[var(--bg-primary)] ${
               profile.is_online ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'

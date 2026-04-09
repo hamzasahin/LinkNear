@@ -1,10 +1,36 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
 import ProximityRadar from '../components/ProximityRadar'
 
+const ROTATING_WORDS = ['cofounders', 'study buddies', 'mentors', 'collaborators', 'friends']
+
+const WHY_ITEMS = [
+  {
+    no: '01',
+    title: 'No photos until you connect',
+    desc: 'Judge people by their character, skills, and values \u2014 not their appearance.',
+  },
+  {
+    no: '02',
+    title: 'Local only',
+    desc: 'Your feed, your matches, your community \u2014 all within walking distance.',
+  },
+  {
+    no: '03',
+    title: 'Daily challenges from timeless wisdom',
+    desc: 'Small acts of kindness, knowledge, and service. Sourced from Quran, Stoic philosophy, and universal ethics.',
+  },
+  {
+    no: '04',
+    title: 'No algorithm, no ads, no dopamine tricks',
+    desc: 'Chronological feed. No follower counts. No vanity metrics. Just genuine human connection.',
+  },
+]
+
 export default function LandingPage() {
-  const { user, loading, signInWithEmail } = useAuth()
+  const { user, loading, profile, profileLoading, signInWithEmail } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [signInLoading, setSignInLoading] = useState(false)
@@ -12,11 +38,69 @@ export default function LandingPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const emailInputRef = useRef<HTMLInputElement>(null)
 
+  // Rotating word state
+  const [wordIndex, setWordIndex] = useState(0)
+
+  // Community stats
+  const [stats, setStats] = useState<{
+    challenges: number | null
+    connections: number | null
+    users: number | null
+  }>({ challenges: null, connections: null, users: null })
+
   useEffect(() => {
-    if (!loading && user) {
+    if (loading) return
+    if (!user) return
+    if (profileLoading) return
+    if (profile?.skills && profile.skills.length > 0) {
       navigate('/discover', { replace: true })
+    } else {
+      navigate('/onboarding', { replace: true })
     }
-  }, [user, loading, navigate])
+  }, [user, loading, profile, profileLoading, navigate])
+
+  // Rotate words every 3 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setWordIndex(prev => (prev + 1) % ROTATING_WORDS.length)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Fetch community stats on mount
+  useEffect(() => {
+    async function fetchStats() {
+      let challenges: number | null = null
+      let connections: number | null = null
+      let users: number | null = null
+
+      try {
+        const r = await supabase
+          .from('user_challenges')
+          .select('id', { count: 'exact', head: true })
+          .eq('completed', true)
+        challenges = r.count ?? null
+      } catch { /* table may not exist */ }
+
+      try {
+        const r = await supabase
+          .from('connections')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'accepted')
+        connections = r.count ?? null
+      } catch { /* ignore */ }
+
+      try {
+        const r = await supabase
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
+        users = r.count ?? null
+      } catch { /* ignore */ }
+
+      setStats({ challenges, connections, users })
+    }
+    fetchStats()
+  }, [])
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,6 +117,24 @@ export default function LandingPage() {
   const focusEmail = () => {
     emailInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     emailInputRef.current?.focus({ preventScroll: true })
+  }
+
+  const formatStat = (value: number | null) => {
+    if (value === null || value === 0) return null
+    return value.toLocaleString()
+  }
+
+  const hasAnyStats =
+    (stats.challenges !== null && stats.challenges > 0) ||
+    (stats.connections !== null && stats.connections > 0) ||
+    (stats.users !== null && stats.users > 0)
+
+  if (loading || (user && profileLoading)) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
+        <p className="font-pixel text-[11px] uppercase tracking-[0.15em] text-[var(--text-tertiary)]">Signing you in...</p>
+      </div>
+    )
   }
 
   return (
@@ -63,7 +165,7 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* Hero — 12-col grid, asymmetric */}
+      {/* Hero */}
       <section className="max-w-[120rem] mx-auto px-6 md:px-10 py-16 md:py-28">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16 items-center">
           <div className="lg:col-span-7 order-2 lg:order-1">
@@ -71,11 +173,22 @@ export default function LandingPage() {
               01 · Proximity network
             </p>
             <h1 className="font-display text-[clamp(2.75rem,6vw,6.5rem)] text-[var(--text-primary)] leading-[1.02] tracking-[-0.025em] mb-8">
-              LinkNear is a proximity network for finding people nearby.
+              Meet brilliant people. Right where you are.
             </h1>
-            <p className="font-display text-xl md:text-2xl text-[var(--text-secondary)] leading-snug max-w-2xl mb-10 italic">
-              A quieter way to meet the collaborators, mentors, and friends who
-              are already walking distance from where you stand.
+            <p className="font-display text-xl md:text-2xl text-[var(--text-secondary)] leading-snug max-w-2xl mb-6 italic">
+              The anti-dopamine social network. Character first. No photos until you connect.
+            </p>
+
+            {/* Rotating text */}
+            <p className="text-base text-[var(--text-tertiary)] mb-10 h-6 overflow-hidden">
+              Find{' '}
+              <span
+                key={wordIndex}
+                className="inline-block text-[var(--accent-primary)] font-medium animate-fade-in"
+              >
+                {ROTATING_WORDS[wordIndex]}
+              </span>{' '}
+              within walking distance.
             </p>
 
             <form
@@ -98,7 +211,7 @@ export default function LandingPage() {
                 disabled={signInLoading || sent || !email.trim()}
                 className="text-base text-[var(--accent-primary)] underline underline-offset-4 decoration-[var(--accent-primary)] hover:decoration-[2px] disabled:opacity-50 transition-all whitespace-nowrap px-2 text-left sm:self-center"
               >
-                {signInLoading ? 'Sending…' : sent ? '· Link sent' : 'Request access →'}
+                {signInLoading ? 'Sending\u2026' : sent ? '\u00b7 Link sent' : 'Request access \u2192'}
               </button>
             </form>
 
@@ -107,11 +220,11 @@ export default function LandingPage() {
               aria-live="polite"
             >
               {errorMsg ? (
-                <span className="text-[var(--danger)]">Err · {errorMsg}</span>
+                <span className="text-[var(--danger)]">Err \u00b7 {errorMsg}</span>
               ) : sent ? (
-                <>· Check <strong className="text-[var(--text-primary)]">{email}</strong> for your sign-in link</>
+                <>\u00b7 Check <strong className="text-[var(--text-primary)]">{email}</strong> for your sign-in link</>
               ) : (
-                <>· No password. We email you a one-click link.</>
+                <>\u00b7 No password. We email you a one-click link.</>
               )}
             </p>
           </div>
@@ -157,7 +270,73 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Signal — three numbered steps in a single column */}
+      {/* Why LinkNear */}
+      <section className="border-t border-[var(--border-strong)]">
+        <div className="max-w-[120rem] mx-auto px-6 md:px-10 py-20 md:py-28">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16">
+            <div className="lg:col-span-4">
+              <p className="font-pixel text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] mb-4">
+                Why LinkNear
+              </p>
+              <h2 className="font-display text-4xl md:text-5xl text-[var(--text-primary)] leading-[1.05]">
+                How it's different.
+              </h2>
+            </div>
+            <div className="lg:col-span-8 space-y-12">
+              {WHY_ITEMS.map(item => (
+                <div key={item.no}>
+                  <p className="font-pixel text-[11px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] mb-3">
+                    {item.no}
+                  </p>
+                  <h3 className="font-display text-2xl md:text-3xl text-[var(--text-primary)] mb-2 leading-tight">
+                    {item.title}
+                  </h3>
+                  <p className="text-base text-[var(--text-secondary)] leading-relaxed max-w-prose">
+                    {item.desc}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Community stats */}
+      <section className="border-t border-[var(--border-strong)]">
+        <div className="max-w-[120rem] mx-auto px-6 md:px-10 py-16 md:py-20">
+          <p className="font-pixel text-[11px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] text-center mb-10">
+            ── Community ──────────────────────
+          </p>
+          {hasAnyStats ? (
+            <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
+              {formatStat(stats.challenges) && (
+                <span className="font-pixel text-[11px] uppercase tracking-[0.15em] text-[var(--text-secondary)]">
+                  <span className="text-[var(--text-primary)]">{formatStat(stats.challenges)}</span>{' '}
+                  challenges completed
+                </span>
+              )}
+              {formatStat(stats.connections) && (
+                <span className="font-pixel text-[11px] uppercase tracking-[0.15em] text-[var(--text-secondary)]">
+                  <span className="text-[var(--text-primary)]">{formatStat(stats.connections)}</span>{' '}
+                  connections made
+                </span>
+              )}
+              {formatStat(stats.users) && (
+                <span className="font-pixel text-[11px] uppercase tracking-[0.15em] text-[var(--text-secondary)]">
+                  <span className="text-[var(--text-primary)]">{formatStat(stats.users)}</span>{' '}
+                  people joined
+                </span>
+              )}
+            </div>
+          ) : (
+            <p className="font-pixel text-[11px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] text-center">
+              launching soon
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* Signal — three numbered steps */}
       <section className="border-t border-[var(--border-strong)]">
         <div className="max-w-[120rem] mx-auto px-6 md:px-10 py-20 md:py-28">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16">

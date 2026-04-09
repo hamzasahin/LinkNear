@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { useConnections } from '../hooks/useConnections'
 import { useAuth } from '../contexts/AuthContext'
 import { useRealtime } from '../contexts/RealtimeContext'
+import { useToast } from '../contexts/ToastContext'
 import type { Connection } from '../types'
 import Avatar from '../components/Avatar'
 import EmptyState from '../components/EmptyState'
-import LoadingSpinner from '../components/LoadingSpinner'
+// LoadingSpinner replaced by skeleton screens
 
 type Tab = 'received' | 'sent' | 'connected'
 
@@ -21,6 +22,7 @@ export default function ConnectionsPage() {
     disconnect,
   } = useConnections()
   const { connectionsVersion } = useRealtime()
+  const { showToast } = useToast()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<Tab>('received')
   const [responding, setResponding] = useState<string | null>(null)
@@ -40,6 +42,9 @@ export default function ConnectionsPage() {
     try {
       await respondToConnection(conn.id, accept)
       await getConnections()
+      if (accept) {
+        showToast('Connection accepted \u2014 you can now message each other', 'success')
+      }
     } finally {
       setResponding(null)
     }
@@ -73,7 +78,28 @@ export default function ConnectionsPage() {
     { id: 'connected', label: 'Connected', count: connected.length },
   ]
 
-  if (loading) return <LoadingSpinner message="Loading connections" />
+  if (loading) return (
+    <div className="max-w-2xl mx-auto px-6 py-12">
+      <div className="h-3 skeleton rounded w-20 mb-2" />
+      <div className="h-10 skeleton rounded w-48 mb-10" />
+      <div className="flex gap-8 mb-8 border-b border-[var(--border-strong)] pb-3">
+        <div className="h-4 skeleton rounded w-20" />
+        <div className="h-4 skeleton rounded w-16" />
+        <div className="h-4 skeleton rounded w-24" />
+      </div>
+      <div className="divide-y divide-[var(--border)]">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-4 py-6">
+            <div className="w-10 h-10 rounded-full skeleton" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 skeleton rounded w-40" />
+              <div className="h-3 skeleton rounded w-56" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 
   return (
     <div className="max-w-2xl mx-auto px-6 py-12">
@@ -124,7 +150,7 @@ export default function ConnectionsPage() {
                         className="flex items-start gap-4 cursor-pointer"
                         onClick={() => navigate(`/profile/${other.id}`)}
                       >
-                        <Avatar src={other.avatar_url} name={other.full_name} size="md" />
+                        <Avatar src={other.avatar_url} name={other.full_name} size="md" revealed={false} />
                         <div className="flex-1 min-w-0">
                           <p className="font-display text-lg text-[var(--text-primary)] leading-tight">{other.full_name}</p>
                           <p className="text-sm text-[var(--text-tertiary)] truncate mt-0.5">{other.headline}</p>
@@ -175,7 +201,7 @@ export default function ConnectionsPage() {
                         onClick={() => navigate(`/profile/${other.id}`)}
                         className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer"
                       >
-                        <Avatar src={other.avatar_url} name={other.full_name} size="md" />
+                        <Avatar src={other.avatar_url} name={other.full_name} size="md" revealed={false} />
                         <div className="flex-1 min-w-0">
                           <p className="font-display text-lg text-[var(--text-primary)] leading-tight group-hover:text-[var(--accent-primary)] transition-colors">
                             {other.full_name}
@@ -206,8 +232,8 @@ export default function ConnectionsPage() {
             ? <EmptyState
                 icon="◌"
                 title="No connections yet."
-                description="Start exploring and meet the people nearby."
-                action={{ label: 'Start exploring', onClick: () => navigate('/discover') }}
+                description="Discover people nearby and send a request."
+                action={{ label: 'Discover people', onClick: () => navigate('/discover') }}
               />
             : <ul className="divide-y divide-[var(--border)]">
                 {connected.map(conn => {
@@ -219,7 +245,7 @@ export default function ConnectionsPage() {
                         onClick={() => navigate(`/profile/${other.id}`)}
                         className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer"
                       >
-                        <Avatar src={other.avatar_url} name={other.full_name} size="md" />
+                        <Avatar src={other.avatar_url} name={other.full_name} size="md" revealed={true} />
                         <div className="flex-1 min-w-0">
                           <p className="font-display text-lg text-[var(--text-primary)] leading-tight group-hover:text-[var(--accent-primary)] transition-colors">
                             {other.full_name}

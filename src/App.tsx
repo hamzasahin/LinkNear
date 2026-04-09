@@ -1,4 +1,6 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import * as Sentry from '@sentry/react'
 import { useAuth } from './contexts/AuthContext'
 import Layout from './components/Layout'
 import LoadingSpinner from './components/LoadingSpinner'
@@ -14,6 +16,15 @@ import InboxPage from './pages/InboxPage'
 import BlockedUsersPage from './pages/BlockedUsersPage'
 import PrivacyPage from './pages/PrivacyPage'
 import TermsPage from './pages/TermsPage'
+import ErrorFallbackPage from './pages/ErrorFallbackPage'
+import PosterPage from './pages/PosterPage'
+import ChallengeCardsPage from './pages/ChallengeCardsPage'
+
+// Lazy-loaded pages (not needed on every session)
+const FeedPage = lazy(() => import('./pages/FeedPage'))
+const GrowthPage = lazy(() => import('./pages/GrowthPage'))
+const MyProfilePage = lazy(() => import('./pages/MyProfilePage'))
+const QuizPage = lazy(() => import('./pages/QuizPage'))
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, profile, profileLoading } = useAuth()
@@ -37,6 +48,25 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <Layout>{children}</Layout>
 }
 
+/** Like ProtectedRoute but without Layout (no bottom nav). */
+function ProtectedRouteNoLayout({ children }: { children: React.ReactNode }) {
+  const { user, loading, profile, profileLoading } = useAuth()
+
+  if (loading || (user && profileLoading && !profile)) {
+    return <LoadingSpinner fullScreen message="Loading..." />
+  }
+
+  if (!user) {
+    return <Navigate to="/" replace />
+  }
+
+  if (!profile?.skills || profile.skills.length === 0) {
+    return <Navigate to="/onboarding" replace />
+  }
+
+  return <>{children}</>
+}
+
 function OnboardingRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
 
@@ -48,6 +78,7 @@ function OnboardingRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <Sentry.ErrorBoundary fallback={<ErrorFallbackPage />}>
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<LandingPage />} />
@@ -66,6 +97,22 @@ export default function App() {
           element={
             <ProtectedRoute>
               <DiscoverPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/feed"
+          element={
+            <ProtectedRoute>
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}><FeedPage /></Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/growth"
+          element={
+            <ProtectedRoute>
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}><GrowthPage /></Suspense>
             </ProtectedRoute>
           }
         />
@@ -102,6 +149,14 @@ export default function App() {
           }
         />
         <Route
+          path="/me"
+          element={
+            <ProtectedRoute>
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}><MyProfilePage /></Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/settings"
           element={
             <ProtectedRoute>
@@ -117,8 +172,19 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/quiz"
+          element={
+            <ProtectedRouteNoLayout>
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}><QuizPage /></Suspense>
+            </ProtectedRouteNoLayout>
+          }
+        />
+        <Route path="/poster" element={<PosterPage />} />
+        <Route path="/cards" element={<ChallengeCardsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
+    </Sentry.ErrorBoundary>
   )
 }

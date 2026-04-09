@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
@@ -39,28 +39,30 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const [connectionsVersion, setConnectionsVersion] = useState(0)
   const [messagesVersions, setMessagesVersions] = useState<Record<string, number>>({})
 
-  const refreshCounts = async () => {
-    if (!user) return
+  const userRef = useRef(user)
+  userRef.current = user
+
+  const refreshCounts = useCallback(async () => {
+    const u = userRef.current
+    if (!u) return
 
     // Pending received requests
     const { count: pending } = await supabase
       .from('connections')
       .select('id', { count: 'exact', head: true })
-      .eq('receiver_id', user.id)
+      .eq('receiver_id', u.id)
       .eq('status', 'pending')
     setPendingReceivedCount(pending ?? 0)
 
     // Unread messages in any of my accepted connections, not sent by me
-    // (done via a single query joining connections via RLS since messages RLS
-    // already limits to accepted conversations I'm part of)
     const { count: unread } = await supabase
       .from('messages')
       .select('id', { count: 'exact', head: true })
-      .neq('sender_id', user.id)
+      .neq('sender_id', u.id)
       .is('read_at', null)
       .is('deleted_at', null)
     setUnreadMessageCount(unread ?? 0)
-  }
+  }, [])
 
   useEffect(() => {
     if (!user) {
@@ -149,8 +151,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       getMessagesVersion: (connectionId: string) => messagesVersions[connectionId] ?? 0,
       refresh: refreshCounts,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pendingReceivedCount, unreadMessageCount, connectionsVersion, messagesVersions]
+    [pendingReceivedCount, unreadMessageCount, connectionsVersion, messagesVersions, refreshCounts]
   )
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>
