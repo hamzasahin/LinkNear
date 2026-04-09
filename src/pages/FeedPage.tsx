@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useLocation } from '../hooks/useLocation'
 import { useFeed } from '../hooks/useFeed'
@@ -84,11 +85,13 @@ function PostCard({
   currentUserId,
   onLike,
   onDelete,
+  onNavigateToProfile,
 }: {
   post: FeedPost
   currentUserId: string
   onLike: (postId: string) => void
   onDelete: (postId: string) => void
+  onNavigateToProfile: (userId: string) => void
 }) {
   const initials = getInitials(post.full_name)
   const borderAccent = BORDER_ACCENTS[post.post_type] || ''
@@ -98,17 +101,23 @@ function PostCard({
   return (
     <article className={`py-6 px-4 ${borderAccent}`}>
       <div className="flex items-start gap-3">
-        {/* Always initials, never photo */}
-        <Avatar name={post.full_name} size="md" />
+        <button onClick={() => onNavigateToProfile(post.user_id)} className="flex-shrink-0">
+          <Avatar src={post.avatar_url} name={post.full_name} size="md" />
+        </button>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 text-sm mb-1.5">
             <span className="font-pixel text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
               {initials}
             </span>
-            <span className="text-[var(--text-faint)]">&middot;</span>
-            <span className="text-[var(--text-secondary)] truncate">{post.full_name}</span>
-            <span className="text-[var(--text-faint)]">&middot;</span>
+            <span className="text-[var(--text-faint)]">·</span>
+            <button
+              onClick={() => onNavigateToProfile(post.user_id)}
+              className="text-[var(--text-secondary)] truncate hover:text-[var(--accent-primary)] transition-colors"
+            >
+              {post.full_name}
+            </button>
+            <span className="text-[var(--text-faint)]">·</span>
             <span className="text-[var(--text-tertiary)] text-xs flex-shrink-0">
               {formatRelativeTime(post.created_at)}
             </span>
@@ -181,6 +190,7 @@ function PostCard({
 
 export default function FeedPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const { latitude, longitude, loading: locationLoading } = useLocation()
   const { posts, loading, error, hasMore, getFeed, loadMore, createPost, likePost, deletePost } = useFeed()
 
@@ -370,6 +380,7 @@ export default function FeedPage() {
                 currentUserId={user?.id ?? ''}
                 onLike={handleLike}
                 onDelete={handleDelete}
+                onNavigateToProfile={(uid) => navigate(`/profile/${uid}`)}
               />
             ))}
             {posts.length < 5 && SEED_POSTS.slice(0, Math.max(0, 5 - posts.length)).map((seed, i) => (

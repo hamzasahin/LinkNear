@@ -62,7 +62,7 @@ function ProfileCard({ profile, onConnect, connectionStatus }: ProfileCardProps)
     <article className="border-t border-[var(--border)] py-7 group">
       <div className="flex items-start gap-4 cursor-pointer" onClick={goToProfile}>
         <div className="relative flex-shrink-0">
-          <Avatar src={profile.avatar_url} name={profile.full_name} size="lg" revealed={false} />
+          <Avatar src={profile.avatar_url} name={profile.full_name} size="lg" />
           {profile.is_online && (
             <span className="absolute bottom-0.5 right-0.5 w-3 h-3 bg-[var(--success)] rounded-full border-2 border-[var(--bg-primary)]" />
           )}

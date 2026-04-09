@@ -150,7 +150,7 @@ export default function ConnectionsPage() {
                         className="flex items-start gap-4 cursor-pointer"
                         onClick={() => navigate(`/profile/${other.id}`)}
                       >
-                        <Avatar src={other.avatar_url} name={other.full_name} size="md" revealed={false} />
+                        <Avatar src={other.avatar_url} name={other.full_name} size="md" revealed={true} />
                         <div className="flex-1 min-w-0">
                           <p className="font-display text-lg text-[var(--text-primary)] leading-tight">{other.full_name}</p>
                           <p className="text-sm text-[var(--text-tertiary)] truncate mt-0.5">{other.headline}</p>
@@ -201,7 +201,7 @@ export default function ConnectionsPage() {
                         onClick={() => navigate(`/profile/${other.id}`)}
                         className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer"
                       >
-                        <Avatar src={other.avatar_url} name={other.full_name} size="md" revealed={false} />
+                        <Avatar src={other.avatar_url} name={other.full_name} size="md" revealed={true} />
                         <div className="flex-1 min-w-0">
                           <p className="font-display text-lg text-[var(--text-primary)] leading-tight group-hover:text-[var(--accent-primary)] transition-colors">
                             {other.full_name}

@@ -203,7 +203,7 @@ export default function ProfilePage() {
           <Avatar src={profile.avatar_url} name={profile.full_name} size="xl" revealed={photoRevealed} />
           {!photoRevealed && (
             <p className="font-pixel text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)] mt-2 text-center max-w-[6rem]">
-              Photos become visible after connecting.
+              Full photo visible after connecting.
             </p>
           )}
           <span
