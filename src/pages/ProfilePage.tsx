@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useLocation } from '../hooks/useLocation'
 import { useModeration } from '../hooks/useModeration'
 import { useConnections } from '../hooks/useConnections'
+import { useProfilePhotos } from '../hooks/useProfilePhotos'
 import { shouldShowPhoto } from '../utils/photoPrivacy'
 import type { ProfileWithDistance, ReportCategory } from '../types'
 import Avatar from '../components/Avatar'
@@ -48,14 +49,17 @@ export default function ProfilePage() {
   const fallbackDistance = navState?.distance_km ?? null
   const { blockUser, reportUser } = useModeration()
   const { getConnections, getConnectionStatus } = useConnections()
+  const { photos, getPhotos } = useProfilePhotos()
+  const [connectionsReady, setConnectionsReady] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [blockModalOpen, setBlockModalOpen] = useState(false)
   const [reportModalOpen, setReportModalOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    getConnections()
-  }, [getConnections])
+    getConnections().then(() => setConnectionsReady(true))
+    if (id) getPhotos(id)
+  }, [getConnections, getPhotos, id])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -128,7 +132,9 @@ export default function ProfilePage() {
   const error = profileState.requestKey === requestKey ? profileState.error : null
 
   const connectionStatus = id ? getConnectionStatus(id) : 'none'
-  const photoRevealed = !id || !user?.id
+  // Until connections have loaded, show the photo (avoid flash of initials → photo).
+  // Once loaded, apply the privacy rule: full photo only for self, public opt-in, or accepted.
+  const photoRevealed = !connectionsReady || !id || !user?.id
     ? true
     : shouldShowPhoto(
         id,
@@ -246,6 +252,33 @@ export default function ProfilePage() {
           </div>
         </div>
       </header>
+
+      {/* Photos — visible to connected users or own profile */}
+      {photos.length > 0 && photoRevealed && (
+        <section className="border-t border-[var(--border-strong)] pt-8 mb-10">
+          <SectionLabel>Photos</SectionLabel>
+          <div className="grid grid-cols-3 gap-2">
+            {photos.map(photo => (
+              <img
+                key={photo.id}
+                src={photo.photo_url}
+                alt={`${profile.full_name}'s photo`}
+                className="w-full aspect-square object-cover rounded-[var(--radius-md)]"
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Photos hint — when not connected and photos exist */}
+      {photos.length > 0 && !photoRevealed && (
+        <section className="border-t border-[var(--border-strong)] pt-8 mb-10">
+          <SectionLabel>Photos</SectionLabel>
+          <p className="text-sm text-[var(--text-tertiary)]">
+            {photos.length} photo{photos.length > 1 ? 's' : ''} — visible after connecting.
+          </p>
+        </section>
+      )}
 
       {/* Bio */}
       {profile.bio && (
