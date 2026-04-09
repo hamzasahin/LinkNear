@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useProfile } from '../hooks/useProfile'
 import { useQuiz } from '../hooks/useQuiz'
+import { useProfilePhotos } from '../hooks/useProfilePhotos'
 import { useLocation } from '../hooks/useLocation'
 import TagInput from '../components/TagInput'
 import Avatar from '../components/Avatar'
@@ -62,6 +63,7 @@ export default function SettingsPage() {
   const { user, signOut } = useAuth()
   const { getMyProfile, updateProfile, uploadAvatar, deleteAccount } = useProfile()
   const { getQuiz } = useQuiz()
+  const { photos, getPhotos, uploadPhoto, deletePhoto, MAX_PHOTOS } = useProfilePhotos()
   const location = useLocation()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
@@ -111,8 +113,9 @@ export default function SettingsPage() {
     })
     if (user) {
       getQuiz(user.id).then(q => setQuiz(q))
+      getPhotos(user.id)
     }
-  }, [getMyProfile, getQuiz, user])
+  }, [getMyProfile, getQuiz, getPhotos, user])
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -211,6 +214,55 @@ export default function SettingsPage() {
             </p>
           </div>
         </div>
+      </Section>
+
+      <Section label={`Photos · ${photos.length} / ${MAX_PHOTOS}`}>
+        <div className="grid grid-cols-3 gap-2">
+          {photos.map(photo => (
+            <div key={photo.id} className="relative group">
+              <img
+                src={photo.photo_url}
+                alt="Profile photo"
+                className="w-full aspect-square object-cover rounded-[var(--radius-md)]"
+              />
+              <button
+                onClick={async () => {
+                  const { error } = await deletePhoto(photo.id)
+                  if (error) showToast(error, 'error')
+                  else if (user) getPhotos(user.id)
+                }}
+                className="absolute top-1 right-1 w-6 h-6 bg-[var(--bg-primary)] border border-[var(--border-strong)] rounded-full flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--danger)] opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                aria-label="Remove photo"
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+          {photos.length < MAX_PHOTOS && (
+            <label className="w-full aspect-square border border-dashed border-[var(--border-strong)] rounded-[var(--radius-md)] flex flex-col items-center justify-center cursor-pointer hover:border-[var(--accent-primary)] transition-colors">
+              <svg className="w-6 h-6 text-[var(--text-tertiary)] mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              <span className="font-pixel text-[9px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Add photo</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const { error } = await uploadPhoto(file)
+                  if (error) showToast(error, 'error')
+                  else showToast('Photo added', 'success')
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          )}
+        </div>
+        <p className="text-xs text-[var(--text-tertiary)] mt-2">
+          Photos are visible as thumbnails to everyone. Full view only after connecting.
+        </p>
       </Section>
 
       <Section label="Identity">
