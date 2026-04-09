@@ -8,7 +8,7 @@ interface Challenge {
   description: string
   category: string
   source_text: string | null
-  source_attribution: string | null
+  source: string | null
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -39,7 +39,7 @@ export default function ChallengeCardsPage() {
       setLoading(true)
       const { data, error: fetchError } = await supabase
         .from('challenges')
-        .select('id, title, description, category, source_text, source_attribution')
+        .select('id, title, description, category, source_text, source')
         .order('created_at', { ascending: true })
 
       if (fetchError) {
@@ -193,12 +193,12 @@ export default function ChallengeCardsPage() {
               &ldquo;{current.source_text}&rdquo;
             </p>
           )}
-          {current.source_attribution && (
+          {current.source && (
             <p
               className="font-pixel text-[10px] tracking-wide mb-5"
               style={{ color: '#706a64' }}
             >
-              &mdash; {current.source_attribution}
+              &mdash; {current.source}
             </p>
           )}
 
