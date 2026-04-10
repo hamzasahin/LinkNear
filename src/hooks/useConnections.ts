@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import type { Connection } from '../types'
 import { useAuth } from '../contexts/AuthContext'
 import { rpcWithRetry } from '../lib/rpcRetry'
+import { track } from '../lib/analytics'
 
 export type ConnectionStatus =
   | 'none'
@@ -69,6 +70,7 @@ export function useConnections(): UseConnectionsReturn {
           p_message: message ?? null,
         })
       )
+      track('connection_sent')
       return { error: null }
     } catch (e) {
       return { error: e instanceof Error ? e.message : String(e) }
@@ -90,6 +92,7 @@ export function useConnections(): UseConnectionsReturn {
       )
       const newStatus: Connection['status'] = accept ? 'accepted' : 'declined'
       setConnections(prev => prev.map(c => (c.id === connectionId ? { ...c, status: newStatus } : c)))
+      if (accept) track('connection_accepted')
       return { error: null }
     } catch (e) {
       return { error: e instanceof Error ? e.message : String(e) }

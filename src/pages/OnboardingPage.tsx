@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { track } from '../lib/analytics'
 import { useProfile } from '../hooks/useProfile'
 import { useLocation } from '../hooks/useLocation'
 import Avatar from '../components/Avatar'
@@ -132,7 +133,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 }
 
 export default function OnboardingPage() {
-  const { user } = useAuth()
+  const { user, reloadProfile } = useAuth()
   const { getMyProfile, updateProfile, uploadAvatar } = useProfile()
   const location = useLocation()
   const navigate = useNavigate()
@@ -268,6 +269,10 @@ export default function OnboardingPage() {
       window.alert(updateError)
       return
     }
+    // Refresh the profile in AuthContext so ProtectedRoute sees updated skills
+    // and doesn't redirect back to /onboarding.
+    await reloadProfile()
+    track('onboarding_completed')
     navigate('/discover', { replace: true })
   }
 

@@ -1,12 +1,58 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation as useRouterLocation } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useHeartbeat } from '../hooks/useHeartbeat'
 import { useRealtime } from '../contexts/RealtimeContext'
 import Avatar from './Avatar'
 
+/* 16x16 stroke-only SVG icons — inherit color via currentColor */
+const DiscoverIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+  </svg>
+)
+
+const FeedIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 6h16M4 12h16M4 18h10" />
+  </svg>
+)
+
+const ConnectionsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+)
+
+const MessagesIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+  </svg>
+)
+
+const ProfileIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+)
+
+type IconComponent = () => React.ReactNode
+const NAV_ICONS: Record<string, IconComponent> = {
+  '/discover': DiscoverIcon,
+  '/feed': FeedIcon,
+  '/connections': ConnectionsIcon,
+  '/messages': MessagesIcon,
+  '/me': ProfileIcon,
+}
+
 const NAV_LINKS: { to: string; label: string; badgeKey?: 'pendingReceivedCount' | 'unreadMessageCount' }[] = [
   { to: '/discover', label: 'Discover' },
+  { to: '/feed', label: 'Feed' },
   { to: '/connections', label: 'Connections', badgeKey: 'pendingReceivedCount' },
   { to: '/messages', label: 'Messages', badgeKey: 'unreadMessageCount' },
 ]
@@ -14,6 +60,7 @@ const NAV_LINKS: { to: string; label: string; badgeKey?: 'pendingReceivedCount' 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  const routerLocation = useRouterLocation()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const realtime = useRealtime()
@@ -53,18 +100,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <nav className="flex items-center gap-8">
           {NAV_LINKS.map(link => {
             const badge = link.badgeKey ? realtime[link.badgeKey] : 0
+            const Icon = NAV_ICONS[link.to]
             return (
               <NavLink
                 key={link.to}
                 to={link.to}
                 className={({ isActive }) =>
-                  `relative text-sm transition-colors pb-1 border-b ${
+                  `relative flex items-center gap-1.5 text-sm transition-colors pb-1 border-b ${
                     isActive
                       ? 'text-[var(--text-primary)] border-[var(--accent-primary)]'
                       : 'text-[var(--text-tertiary)] border-transparent hover:text-[var(--text-primary)]'
                   }`
                 }
               >
+                {Icon && <Icon />}
                 {link.label}
                 {badge > 0 && (
                   <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--accent-primary)] text-[var(--bg-primary)] text-[10px] font-bold tabular-nums">
@@ -79,6 +128,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen(v => !v)}
+            aria-label="Account menu"
+            aria-expanded={dropdownOpen}
             className="flex items-center gap-2 p-1 rounded-[var(--radius-md)] hover:bg-[var(--bg-surface)] transition-colors"
           >
             <Avatar src={avatarUrl} name={fullName} size="sm" />
@@ -95,6 +146,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   {user?.email}
                 </p>
               </div>
+              <NavLink
+                to="/me"
+                onClick={() => setDropdownOpen(false)}
+                className="block px-4 py-2.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                My Profile
+              </NavLink>
               <NavLink
                 to="/settings"
                 onClick={() => setDropdownOpen(false)}
@@ -114,7 +172,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Main content */}
-      <main className="flex-1 pb-20 md:pb-0">
+      <main key={routerLocation.pathname} className="flex-1 pb-20 md:pb-0 page-enter">
         {children}
       </main>
 
@@ -123,6 +181,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center justify-around">
           {NAV_LINKS.map(link => {
             const badge = link.badgeKey ? realtime[link.badgeKey] : 0
+            const Icon = NAV_ICONS[link.to]
             return (
               <NavLink
                 key={link.to}
@@ -133,7 +192,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   }`
                 }
               >
-                <span className="text-base leading-none" aria-hidden>·</span>
+                {Icon ? <Icon /> : <span className="text-base leading-none" aria-hidden>·</span>}
                 {link.label}
                 {badge > 0 && (
                   <span className="absolute top-1 right-2 inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-[var(--accent-primary)] text-[var(--bg-primary)] text-[9px] font-bold tabular-nums">
@@ -144,14 +203,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             )
           })}
           <NavLink
-            to="/settings"
+            to="/me"
             className={({ isActive }) =>
               `flex flex-col items-center gap-1 py-3 px-4 font-pixel text-[10px] uppercase tracking-[0.08em] transition-colors ${
                 isActive ? 'text-[var(--accent-primary)]' : 'text-[var(--text-tertiary)]'
               }`
             }
           >
-            <span className="text-base leading-none" aria-hidden>·</span>
+            <ProfileIcon />
             Profile
           </NavLink>
         </div>

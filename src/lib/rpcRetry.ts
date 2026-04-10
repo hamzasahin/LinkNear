@@ -9,6 +9,9 @@
  * thrown immediately so the caller can surface them.
  */
 
+import { friendlyErrorMessage } from './supabaseHelpers'
+import { captureError } from './errorTracking'
+
 export interface RpcResponse<T> {
   data: T | null
   error: { message: string; code?: string; details?: string } | null
@@ -63,9 +66,10 @@ export async function rpcWithRetry<T>(
 
     // Non-retriable: throw immediately so the UI can surface the real reason.
     if (!shouldRetry(error) || attempt === maxAttempts) {
-      const err = new Error(lastErrorMessage)
+      const err = new Error(friendlyErrorMessage(error))
       // @ts-expect-error — preserve original code for callers that want it
       err.code = error.code
+      captureError(err, { code: error.code, details: error.details })
       throw err
     }
 
@@ -73,5 +77,5 @@ export async function rpcWithRetry<T>(
     await new Promise(resolve => setTimeout(resolve, delay))
   }
 
-  throw new Error(lastErrorMessage)
+  throw new Error(friendlyErrorMessage(lastErrorMessage))
 }

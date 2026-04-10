@@ -4,6 +4,9 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useLocation } from '../hooks/useLocation'
 import { useModeration } from '../hooks/useModeration'
+import { useConnections } from '../hooks/useConnections'
+import { useProfilePhotos } from '../hooks/useProfilePhotos'
+import { shouldShowPhoto } from '../utils/photoPrivacy'
 import type { ProfileWithDistance, ReportCategory } from '../types'
 import Avatar from '../components/Avatar'
 import TagChip from '../components/TagChip'
@@ -45,10 +48,18 @@ export default function ProfilePage() {
   const navState = routerLocation.state as { distance_km?: number } | null
   const fallbackDistance = navState?.distance_km ?? null
   const { blockUser, reportUser } = useModeration()
+  const { getConnections, getConnectionStatus } = useConnections()
+  const { photos, getPhotos } = useProfilePhotos()
+  const [connectionsReady, setConnectionsReady] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [blockModalOpen, setBlockModalOpen] = useState(false)
   const [reportModalOpen, setReportModalOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    getConnections().then(() => setConnectionsReady(true))
+    if (id) getPhotos(id)
+  }, [getConnections, getPhotos, id])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -120,6 +131,18 @@ export default function ProfilePage() {
   const profile = profileState.requestKey === requestKey ? profileState.profile : null
   const error = profileState.requestKey === requestKey ? profileState.error : null
 
+  const connectionStatus = id ? getConnectionStatus(id) : 'none'
+  // Until connections have loaded, show the photo (avoid flash of initials → photo).
+  // Once loaded, apply the privacy rule: full photo only for self, public opt-in, or accepted.
+  const photoRevealed = !connectionsReady || !id || !user?.id
+    ? true
+    : shouldShowPhoto(
+        id,
+        user.id,
+        profile?.show_photo_publicly ?? false,
+        connectionStatus as 'none' | 'pending_sent' | 'pending_received' | 'accepted' | 'declined'
+      )
+
   if (loading) return <LoadingSpinner fullScreen message="Loading profile" />
   if (error || !profile) {
     return (
@@ -183,7 +206,12 @@ export default function ProfilePage() {
       {/* Header — editorial masthead */}
       <header className="flex items-start gap-6 mb-10">
         <div className="relative flex-shrink-0">
-          <Avatar src={profile.avatar_url} name={profile.full_name} size="xl" />
+          <Avatar src={profile.avatar_url} name={profile.full_name} size="xl" revealed={photoRevealed} />
+          {!photoRevealed && (
+            <p className="font-pixel text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)] mt-2 text-center max-w-[6rem]">
+              Full photo visible after connecting.
+            </p>
+          )}
           <span
             className={`absolute bottom-1 right-1 w-3 h-3 rounded-full border-2 border-[var(--bg-primary)] ${
               profile.is_online ? 'bg-[var(--success)]' : 'bg-[var(--text-faint)]'
@@ -224,6 +252,33 @@ export default function ProfilePage() {
           </div>
         </div>
       </header>
+
+      {/* Photos — visible to connected users or own profile */}
+      {photos.length > 0 && photoRevealed && (
+        <section className="border-t border-[var(--border-strong)] pt-8 mb-10">
+          <SectionLabel>Photos</SectionLabel>
+          <div className="grid grid-cols-3 gap-2">
+            {photos.map(photo => (
+              <img
+                key={photo.id}
+                src={photo.photo_url}
+                alt={`${profile.full_name}'s photo`}
+                className="w-full aspect-square object-cover rounded-[var(--radius-md)]"
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Photos hint — when not connected and photos exist */}
+      {photos.length > 0 && !photoRevealed && (
+        <section className="border-t border-[var(--border-strong)] pt-8 mb-10">
+          <SectionLabel>Photos</SectionLabel>
+          <p className="text-sm text-[var(--text-tertiary)]">
+            {photos.length} photo{photos.length > 1 ? 's' : ''} — visible after connecting.
+          </p>
+        </section>
+      )}
 
       {/* Bio */}
       {profile.bio && (

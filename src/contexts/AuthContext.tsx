@@ -11,6 +11,8 @@ import {
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { rpcWithRetry } from '../lib/rpcRetry'
+import { identify, resetAnalytics } from '../lib/analytics'
+import { setUser as setSentryUser, clearUser as clearSentryUser } from '../lib/errorTracking'
 import type { Profile } from '../types'
 
 interface AuthContextType {
@@ -115,6 +117,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
 
       if (session?.user) {
+        identify(session.user.id, { email: session.user.email, name: session.user.user_metadata?.full_name })
+        setSentryUser(session.user.id, session.user.email)
         // IMPORTANT: flip profileLoading to true *synchronously* here, in the
         // same batched update as setUser, so the very first render that sees
         // `user` also sees `profileLoading=true`. Otherwise ProtectedRoute
@@ -126,6 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           void ensureProfileRow(session.user)
         }, 0)
       } else {
+        resetAnalytics()
+        clearSentryUser()
         setProfile(null)
         setProfileLoading(false)
         loadedForUserId.current = null

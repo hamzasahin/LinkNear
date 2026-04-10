@@ -2,12 +2,16 @@ import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useProfile } from '../hooks/useProfile'
+import { useQuiz } from '../hooks/useQuiz'
+import { useProfilePhotos } from '../hooks/useProfilePhotos'
 import { useLocation } from '../hooks/useLocation'
 import TagInput from '../components/TagInput'
 import Avatar from '../components/Avatar'
 import LoadingSpinner from '../components/LoadingSpinner'
 import DeleteAccountModal from '../components/DeleteAccountModal'
 import { validateProfileUpdate } from '../lib/validation'
+import { useToast } from '../contexts/ToastContext'
+import type { CharacterQuiz } from '../types'
 
 const SKILL_SUGGESTIONS = [
   'Python', 'JavaScript', 'TypeScript', 'React', 'Node.js', 'Vue', 'Angular', 'Java', 'C++', 'Rust', 'Go',
@@ -58,11 +62,14 @@ const inputClass = "w-full bg-[var(--bg-primary)] border border-[var(--border-st
 export default function SettingsPage() {
   const { user, signOut } = useAuth()
   const { getMyProfile, updateProfile, uploadAvatar, deleteAccount } = useProfile()
+  const { getQuiz } = useQuiz()
+  const { photos, getPhotos, uploadPhoto, deletePhoto, MAX_PHOTOS } = useProfilePhotos()
   const location = useLocation()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
+  const [quiz, setQuiz] = useState<CharacterQuiz | null>(null)
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const { showToast } = useToast()
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
@@ -79,6 +86,8 @@ export default function SettingsPage() {
     longitude: null as number | null,
     location_name: '',
     discovery_enabled: true,
+    show_photo_publicly: false,
+    email_digest: true,
   })
 
   useEffect(() => {
@@ -96,11 +105,17 @@ export default function SettingsPage() {
           longitude: p.longitude,
           location_name: p.location_name || '',
           discovery_enabled: p.discovery_enabled ?? true,
+          show_photo_publicly: p.show_photo_publicly ?? false,
+          email_digest: p.email_digest ?? true,
         })
       }
       setLoading(false)
     })
-  }, [getMyProfile])
+    if (user) {
+      getQuiz(user.id).then(q => setQuiz(q))
+      getPhotos(user.id)
+    }
+  }, [getMyProfile, getQuiz, getPhotos, user])
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -126,19 +141,18 @@ export default function SettingsPage() {
     })
     if (!validation.ok) {
       const firstError = Object.values(validation.errors)[0]
-      setToast({ type: 'error', message: firstError })
+      showToast(firstError, 'error')
       return
     }
 
     setSaving(true)
-    setToast(null)
 
     let avatarUrl = form.avatar_url
     if (avatarFile) {
       const { url, error: uploadError } = await uploadAvatar(avatarFile)
       if (uploadError) {
         setSaving(false)
-        setToast({ type: 'error', message: uploadError })
+        showToast(uploadError, 'error')
         return
       }
       if (url) avatarUrl = url
@@ -147,10 +161,9 @@ export default function SettingsPage() {
     const { error } = await updateProfile({ ...form, avatar_url: avatarUrl })
 
     if (error) {
-      setToast({ type: 'error', message: error })
+      showToast(error, 'error')
     } else {
-      setToast({ type: 'success', message: 'Saved.' })
-      setTimeout(() => setToast(null), 3000)
+      showToast('Saved.', 'success')
     }
     setSaving(false)
   }
@@ -175,22 +188,6 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-6 py-12">
-      {/* Toast — hairline card, not a colored pill */}
-      {toast && (
-        <div
-          className={`fixed top-6 right-6 z-50 bg-[var(--bg-primary)] border px-4 py-3 rounded-[var(--radius-md)] text-sm animate-fade-in ${
-            toast.type === 'success'
-              ? 'border-[var(--success)] text-[var(--success)]'
-              : 'border-[var(--danger)] text-[var(--danger)]'
-          }`}
-        >
-          <span className="font-pixel text-[10px] uppercase tracking-[0.1em] mr-2">
-            {toast.type === 'success' ? 'OK' : 'Err'}
-          </span>
-          {toast.message}
-        </div>
-      )}
-
       <p className="font-pixel text-[11px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] mb-2">
         Account
       </p>
@@ -217,6 +214,55 @@ export default function SettingsPage() {
             </p>
           </div>
         </div>
+      </Section>
+
+      <Section label={`Photos · ${photos.length} / ${MAX_PHOTOS}`}>
+        <div className="grid grid-cols-3 gap-2">
+          {photos.map(photo => (
+            <div key={photo.id} className="relative group">
+              <img
+                src={photo.photo_url}
+                alt="Profile photo"
+                className="w-full aspect-square object-cover rounded-[var(--radius-md)]"
+              />
+              <button
+                onClick={async () => {
+                  const { error } = await deletePhoto(photo.id)
+                  if (error) showToast(error, 'error')
+                  else if (user) getPhotos(user.id)
+                }}
+                className="absolute top-1 right-1 w-6 h-6 bg-[var(--bg-primary)] border border-[var(--border-strong)] rounded-full flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--danger)] opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                aria-label="Remove photo"
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+          {photos.length < MAX_PHOTOS && (
+            <label className="w-full aspect-square border border-dashed border-[var(--border-strong)] rounded-[var(--radius-md)] flex flex-col items-center justify-center cursor-pointer hover:border-[var(--accent-primary)] transition-colors">
+              <svg className="w-6 h-6 text-[var(--text-tertiary)] mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              <span className="font-pixel text-[9px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Add photo</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const { error } = await uploadPhoto(file)
+                  if (error) showToast(error, 'error')
+                  else showToast('Photo added', 'success')
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          )}
+        </div>
+        <p className="text-xs text-[var(--text-tertiary)] mt-2">
+          Photos are visible as thumbnails to everyone. Full view only after connecting.
+        </p>
       </Section>
 
       <Section label="Identity">
@@ -261,6 +307,44 @@ export default function SettingsPage() {
             ))}
           </select>
         </div>
+      </Section>
+
+      <Section label="Character">
+        {quiz?.completed_at ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="font-pixel text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+                Quiz: Completed
+              </span>
+              <span className="text-[var(--success)] text-xs">&check;</span>
+              <Link
+                to="/quiz"
+                className="ml-auto text-sm text-[var(--accent-primary)] underline underline-offset-4 decoration-[var(--accent-primary)] hover:decoration-[2px] transition-all"
+              >
+                Retake
+              </Link>
+            </div>
+            <p className="text-sm text-[var(--text-secondary)]">
+              Style: {quiz.communication_style.charAt(0).toUpperCase() + quiz.communication_style.slice(1)} &middot; {quiz.work_style.charAt(0).toUpperCase() + quiz.work_style.slice(1)}
+            </p>
+            <p className="text-sm text-[var(--text-secondary)]">
+              Values: {quiz.core_values.join(' \u00b7 ')}
+            </p>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="font-pixel text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+              Quiz: Not taken yet
+            </span>
+            <Link
+              to="/quiz"
+              className="ml-auto text-sm text-[var(--accent-primary)] underline underline-offset-4 decoration-[var(--accent-primary)] hover:decoration-[2px] transition-all"
+            >
+              Take the character quiz &rarr;
+            </Link>
+            <span className="font-pixel text-[10px] text-[var(--text-tertiary)]">2 min</span>
+          </div>
+        )}
       </Section>
 
       <Section label="Skills">
@@ -344,6 +428,35 @@ export default function SettingsPage() {
             <span className="block text-xs text-[var(--text-tertiary)] mt-0.5">
               When off, you are invisible to everyone — no one can find you nearby or see your
               profile until you turn this back on.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.show_photo_publicly}
+            onChange={e => setForm(f => ({ ...f, show_photo_publicly: e.target.checked }))}
+            className="mt-1 w-4 h-4 accent-[var(--accent-primary)]"
+          />
+          <span className="flex-1">
+            <span className="block text-sm text-[var(--text-primary)]">Show my photo publicly</span>
+            <span className="block text-xs text-[var(--text-tertiary)] mt-0.5">
+              When on, everyone can see your photo — even before connecting.
+              Default is off. We believe in character-first connections.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.email_digest}
+            onChange={e => setForm(f => ({ ...f, email_digest: e.target.checked }))}
+            className="mt-1 w-4 h-4 accent-[var(--accent-primary)]"
+          />
+          <span className="flex-1">
+            <span className="block text-sm text-[var(--text-primary)]">Weekly email digest</span>
+            <span className="block text-xs text-[var(--text-tertiary)] mt-0.5">
+              Get a summary of new matches and your progress every Monday.
             </span>
           </span>
         </label>

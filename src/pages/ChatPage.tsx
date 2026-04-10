@@ -66,11 +66,24 @@ export default function ChatPage() {
       : (connection.sender as Profile)
   }, [connection, user])
 
-  // Mark incoming messages as read whenever the chat is open and focused.
+  // Mark incoming messages as read whenever the chat is open and messages change.
   useEffect(() => {
     if (!connectionId || connectionLoading || connectionError) return
     void markRead()
   }, [connectionId, connectionLoading, connectionError, markRead, messages.length])
+
+  // Also mark read when the window regains focus (user tabs back to the chat).
+  useEffect(() => {
+    if (!connectionId || connectionLoading || connectionError) return
+    const handleFocus = () => { void markRead() }
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') void markRead()
+    })
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [connectionId, connectionLoading, connectionError, markRead])
 
   // Auto-scroll to bottom on new messages (only when user is already at/near the bottom).
   useEffect(() => {
@@ -139,7 +152,7 @@ export default function ChatPage() {
           ←
         </button>
         <Link to={`/profile/${partner.id}`} className="flex items-center gap-3 flex-1 min-w-0 group">
-          <Avatar src={partner.avatar_url} name={partner.full_name} size="md" />
+          <Avatar src={partner.avatar_url} name={partner.full_name} size="md" revealed={true} />
           <div className="min-w-0">
             <p className="font-display text-lg text-[var(--text-primary)] leading-tight truncate group-hover:text-[var(--accent-primary)] transition-colors">
               {partner.full_name}

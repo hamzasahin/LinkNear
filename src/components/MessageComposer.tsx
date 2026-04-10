@@ -53,6 +53,7 @@ export default function MessageComposer({
           onKeyDown={handleKeyDown}
           disabled={disabled || sending}
           placeholder={placeholder}
+          aria-label="Message text"
           rows={1}
           className="flex-1 bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-md)] px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] text-sm resize-none focus:outline-none focus:border-[var(--accent-primary)] transition-colors max-h-32 disabled:opacity-50"
           style={{ minHeight: '44px' }}
@@ -60,6 +61,7 @@ export default function MessageComposer({
         <button
           onClick={handleSend}
           disabled={!body.trim() || sending || disabled}
+          aria-label="Send message"
           className="px-5 py-3 rounded-[var(--radius-md)] bg-[var(--accent-primary)] text-[var(--bg-primary)] font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
         >
           {sending ? 'Sending…' : 'Send'}

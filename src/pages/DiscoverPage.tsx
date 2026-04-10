@@ -1,15 +1,21 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useDiscover } from '../hooks/useDiscover'
+import { useNavigate, Link } from 'react-router-dom'
+import { useDiscover, FREE_RADIUS_KM } from '../hooks/useDiscover'
 import { useLocation } from '../hooks/useLocation'
 import { useProfile } from '../hooks/useProfile'
 import { useConnections } from '../hooks/useConnections'
-import type { NearbyProfile, Profile } from '../types'
+import { useSearch } from '../hooks/useSearch'
+import { useChallenges } from '../hooks/useChallenges'
+import { useQuiz } from '../hooks/useQuiz'
+import type { NearbyProfile, Profile, Challenge, UserChallenge, CharacterQuiz } from '../types'
 import Avatar from '../components/Avatar'
 import TagChip from '../components/TagChip'
 import MatchBadge from '../components/MatchBadge'
 import ConnectionModal from '../components/ConnectionModal'
+import ChallengeCard from '../components/ChallengeCard'
 import EmptyState from '../components/EmptyState'
+import GettingStartedChecklist from '../components/GettingStartedChecklist'
+import InviteButton from '../components/InviteButton'
 
 const LOOKING_FOR_LABELS: Record<string, string> = {
   cofounder: 'Cofounder',
@@ -130,35 +136,119 @@ export default function DiscoverPage() {
   const location = useLocation()
   const { getMyProfile } = useProfile()
   const { getConnections, sendConnection, getConnectionStatus } = useConnections()
+  const { getOrAssignDailyChallenge, completeChallenge } = useChallenges()
+  const { getQuiz } = useQuiz()
+  const { results: searchResults, loading: searchLoading, searchProfiles, clearResults: clearSearch } = useSearch()
   const navigate = useNavigate()
   const [myProfile, setMyProfile] = useState<Profile | null>(null)
-  const [radius, setRadius] = useState(10)
+  const [myQuiz, setMyQuiz] = useState<CharacterQuiz | null>(null)
+  const [quizDismissed, setQuizDismissed] = useState(false)
+  const [radius, setRadius] = useState(FREE_RADIUS_KM)
+  const radiusRef = useRef(FREE_RADIUS_KM)
   const [sortBy, setSortBy] = useState<'distance' | 'match'>('distance')
   const [filterLooking, setFilterLooking] = useState<string>('all')
+  const filterLookingRef = useRef<string>('all')
   const [selectedProfile, setSelectedProfile] = useState<NearbyProfile | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [premiumMessage, setPremiumMessage] = useState<string | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
+  // Daily challenge state
+  const [dailyChallenge, setDailyChallenge] = useState<(UserChallenge & { challenge: Challenge }) | null>(null)
+  const [challengeLoading, setChallengeLoading] = useState(true)
+
   useEffect(() => {
-    getMyProfile().then(p => setMyProfile(p))
+    getMyProfile().then(p => {
+      setMyProfile(p)
+      if (p?.id) {
+        getOrAssignDailyChallenge(p.id)
+          .then(c => setDailyChallenge(c))
+          .finally(() => setChallengeLoading(false))
+        getQuiz(p.id).then(q => setMyQuiz(q))
+      } else {
+        setChallengeLoading(false)
+      }
+    })
     getConnections()
-  }, [getConnections, getMyProfile])
+  }, [getConnections, getMyProfile, getOrAssignDailyChallenge, getQuiz])
+
+  const handleCompleteChallenge = useCallback(async (reflection?: string, shareToFeed?: boolean) => {
+    if (!myProfile || !dailyChallenge) return null
+    const res = await completeChallenge(
+      myProfile.id,
+      dailyChallenge.id,
+      dailyChallenge.challenge.points,
+      reflection,
+      shareToFeed,
+    )
+    if (res.success) {
+      // Refresh profile to get updated streak
+      getMyProfile().then(p => setMyProfile(p))
+      return { pointsEarned: res.pointsEarned, streakBonus: res.streakBonus }
+    }
+    return null
+  }, [myProfile, dailyChallenge, completeChallenge, getMyProfile])
+
+  // Focus search input when opened
+  useEffect(() => {
+    if (searchOpen && searchInputRef.current) {
+      searchInputRef.current.focus()
+    }
+  }, [searchOpen])
+
+  // Premium radius capping
+  const handleRadiusChange = useCallback((value: number) => {
+    const isPremium = myProfile?.is_premium === true
+    if (!isPremium && value > FREE_RADIUS_KM) {
+      setRadius(FREE_RADIUS_KM)
+      radiusRef.current = FREE_RADIUS_KM
+      setPremiumMessage('Free plan supports up to 5 miles. Premium coming soon!')
+      setTimeout(() => setPremiumMessage(null), 4000)
+      return
+    }
+    setRadius(value)
+    radiusRef.current = value
+    setPremiumMessage(null)
+  }, [myProfile])
+
+  // Search handlers
+  const handleSearchChange = useCallback((query: string) => {
+    setSearchQuery(query)
+    searchProfiles(query)
+  }, [searchProfiles])
+
+  const handleCloseSearch = useCallback(() => {
+    setSearchOpen(false)
+    setSearchQuery('')
+    clearSearch()
+  }, [clearSearch])
 
   const doFetch = useCallback(() => {
     if (location.latitude && location.longitude) {
       fetchNearbyProfiles({
         lat: location.latitude,
         lng: location.longitude,
-        radiusKm: radius,
-        lookingFor: filterLooking === 'all' ? null : filterLooking,
+        radiusKm: radiusRef.current,
+        lookingFor: filterLookingRef.current === 'all' ? null : filterLookingRef.current,
         myProfile,
+        myQuiz,
       })
     }
-  }, [location.latitude, location.longitude, radius, filterLooking, myProfile, fetchNearbyProfiles])
+  }, [location.latitude, location.longitude, myProfile, myQuiz, fetchNearbyProfiles])
 
+  // Debounce refetches when radius or filter changes so dragging the slider
+  // doesn't fire dozens of RPC calls and exhaust the rate limit.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    doFetch()
-  }, [doFetch])
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      doFetch()
+    }, 500)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [doFetch, radius, filterLooking])
 
   // Infinite scroll sentinel
   useEffect(() => {
@@ -195,20 +285,122 @@ export default function DiscoverPage() {
     <div className="max-w-6xl mx-auto px-6 py-12">
       {/* Masthead */}
       <header className="mb-10">
-        <p className="font-pixel text-[11px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] mb-2">
-          Proximity
-        </p>
-        <h1 className="font-display text-4xl md:text-5xl text-[var(--text-primary)] leading-[1.1] mb-3">
-          Discover
-        </h1>
-        <p className="font-pixel text-[11px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
-          {location.locationName
-            ? `Near ${location.locationName}`
-            : location.loading
-            ? 'Locating…'
-            : 'Enable location to begin'}
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="font-pixel text-[11px] uppercase tracking-[0.15em] text-[var(--text-tertiary)] mb-2">
+              Proximity
+            </p>
+            <h1 className="font-display text-4xl md:text-5xl text-[var(--text-primary)] leading-[1.1] mb-3">
+              Discover
+            </h1>
+            <p className="font-pixel text-[11px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+              {location.locationName
+                ? `Near ${location.locationName}`
+                : location.loading
+                ? 'Locating…'
+                : 'Enable location to begin'}
+            </p>
+          </div>
+          <button
+            onClick={() => searchOpen ? handleCloseSearch() : setSearchOpen(true)}
+            className="mt-1 p-2 text-[var(--text-tertiary)] hover:text-[var(--accent-primary)] transition-colors"
+            aria-label={searchOpen ? 'Close search' : 'Search profiles'}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              {searchOpen ? (
+                <path d="M5 5l10 10M15 5L5 15" />
+              ) : (
+                <>
+                  <circle cx="8.5" cy="8.5" r="5.5" />
+                  <path d="M13 13l4 4" />
+                </>
+              )}
+            </svg>
+          </button>
+        </div>
+
+        {/* Search panel */}
+        {searchOpen && (
+          <div className="mt-4">
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={e => handleSearchChange(e.target.value)}
+              placeholder="Search by name, skill, or interest..."
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-strong)] rounded-[var(--radius-md)] px-3.5 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] transition-colors"
+            />
+            {(searchQuery.trim().length > 0) && (
+              <div className="mt-2 border border-[var(--border-strong)] rounded-[var(--radius-md)] bg-[var(--bg-surface)] overflow-hidden max-h-80 overflow-y-auto">
+                {searchLoading && (
+                  <div className="px-4 py-3 font-pixel text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+                    Searching...
+                  </div>
+                )}
+                {!searchLoading && searchResults.length === 0 && (
+                  <div className="px-4 py-3 font-pixel text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+                    No results found
+                  </div>
+                )}
+                {!searchLoading && searchResults.map(result => (
+                  <button
+                    key={result.id}
+                    onClick={() => {
+                      handleCloseSearch()
+                      navigate(`/profile/${result.id}`)
+                    }}
+                    className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-[var(--bg-primary)] transition-colors border-b border-[var(--border)] last:border-b-0"
+                  >
+                    <Avatar name={result.full_name} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-[var(--text-primary)] truncate">{result.full_name}</p>
+                      {result.headline && (
+                        <p className="text-xs text-[var(--text-tertiary)] truncate">{result.headline}</p>
+                      )}
+                      {result.location_name && (
+                        <p className="font-pixel text-[9px] uppercase tracking-[0.1em] text-[var(--text-tertiary)] mt-0.5">{result.location_name}</p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </header>
+
+      {/* Getting started checklist */}
+      {myProfile && (
+        <GettingStartedChecklist
+          profile={myProfile}
+          challengeCompletedToday={
+            !!myProfile.last_challenge_date &&
+            myProfile.last_challenge_date === new Date().toISOString().slice(0, 10)
+          }
+        />
+      )}
+
+      {/* Quiz prompt — only if quiz not completed and not dismissed */}
+      {myProfile && !myQuiz?.completed_at && !quizDismissed && (
+        <div className="border border-[var(--border-strong)] rounded-[var(--radius-md)] p-4 mb-8 text-sm text-[var(--text-secondary)] flex items-center gap-3">
+          <span className="flex-1">
+            Curious about your working style?{' '}
+            <Link
+              to="/quiz"
+              className="text-[var(--accent-primary)] underline underline-offset-4 decoration-[var(--accent-primary)] hover:decoration-[2px] transition-all"
+            >
+              Take the character quiz &rarr;
+            </Link>
+          </span>
+          <button
+            onClick={() => setQuizDismissed(true)}
+            className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors text-xs"
+            aria-label="Dismiss"
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Discovery disabled notice */}
       {myProfile && myProfile.discovery_enabled === false && (
@@ -237,7 +429,8 @@ export default function DiscoverPage() {
             min={1}
             max={50}
             value={radius}
-            onChange={e => setRadius(Number(e.target.value))}
+            onChange={e => handleRadiusChange(Number(e.target.value))}
+            aria-label="Discovery radius in kilometers"
             className="flex-1 accent-[var(--accent-primary)]"
           />
           <span className="font-pixel text-sm text-[var(--text-primary)] tabular-nums w-14 text-right">
@@ -256,7 +449,7 @@ export default function DiscoverPage() {
 
         <select
           value={filterLooking}
-          onChange={e => setFilterLooking(e.target.value)}
+          onChange={e => { setFilterLooking(e.target.value); filterLookingRef.current = e.target.value }}
           className={selectClass}
         >
           <option value="all">All goals</option>
@@ -276,6 +469,31 @@ export default function DiscoverPage() {
           Refresh →
         </button>
       </div>
+
+      {/* Premium radius message */}
+      {premiumMessage && (
+        <p className="font-pixel text-[10px] uppercase tracking-[0.1em] text-[var(--accent-primary)] mt-3 mb-2">
+          {premiumMessage}
+        </p>
+      )}
+
+      {/* Daily Challenge */}
+      {challengeLoading ? (
+        <div className="border border-[var(--border-strong)] rounded-[var(--radius-md)] p-6 mb-8">
+          <div className="space-y-3">
+            <div className="h-3 skeleton rounded w-1/3" />
+            <div className="h-6 skeleton rounded w-3/4" />
+            <div className="h-4 skeleton rounded w-full" />
+            <div className="h-4 skeleton rounded w-2/3" />
+          </div>
+        </div>
+      ) : dailyChallenge ? (
+        <ChallengeCard
+          userChallenge={dailyChallenge}
+          streakCount={myProfile?.streak_count || 0}
+          onComplete={handleCompleteChallenge}
+        />
+      ) : null}
 
       {/* Error */}
       {error && (
@@ -312,12 +530,17 @@ export default function DiscoverPage() {
       {!loading && location.latitude && (
         <>
           {sorted.length === 0 ? (
-            <EmptyState
-              icon="∅"
-              title="No one nearby yet."
-              description={`No profiles within ${radius} km. Expand your radius.`}
-              action={{ label: 'Expand to 50 km', onClick: () => setRadius(50) }}
-            />
+            <>
+              <EmptyState
+                icon="∅"
+                title="No one nearby yet."
+                description={`No profiles within ${radius} km. Expand your radius.`}
+                action={{ label: myProfile?.is_premium ? 'Expand to 50 km' : `Expand to ${FREE_RADIUS_KM} km`, onClick: () => handleRadiusChange(myProfile?.is_premium ? 50 : FREE_RADIUS_KM) }}
+              />
+              <div className="text-center mt-2">
+                <InviteButton />
+              </div>
+            </>
           ) : (
             <>
               <p className="font-pixel text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)] tabular-nums my-6">
@@ -339,6 +562,9 @@ export default function DiscoverPage() {
                   {loadingMore ? 'Loading more…' : ''}
                 </div>
               )}
+              <div className="text-center py-8 border-t border-[var(--border)]">
+                <InviteButton />
+              </div>
             </>
           )}
         </>

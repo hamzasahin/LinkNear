@@ -4,6 +4,7 @@ interface AvatarProps {
   src?: string | null
   name: string
   size?: 'sm' | 'md' | 'lg' | 'xl'
+  revealed?: boolean // if false, always show initials regardless of src
 }
 
 const SIZES = {
@@ -43,7 +44,7 @@ function getInitials(name: string): string {
  * an error state — previous implementation used `display: none` + a
  * `nextElementSibling` that never actually rendered.
  */
-export default function Avatar({ src, name, size = 'md' }: AvatarProps) {
+export default function Avatar({ src, name, size = 'md', revealed = true }: AvatarProps) {
   const sizeClass = SIZES[size]
   const colorClass = getColorClass(name)
   const initials = getInitials(name || '?')
@@ -54,7 +55,7 @@ export default function Avatar({ src, name, size = 'md' }: AvatarProps) {
     setHasError(false)
   }, [src])
 
-  if (src && !hasError) {
+  if (src && !hasError && revealed) {
     return (
       <img
         src={src}
